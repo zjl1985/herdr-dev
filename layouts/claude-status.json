@@ -1,0 +1,191 @@
+{
+  "id": "root",
+  "cloned_from": {
+    "name": "main",
+    "version": "0.1.11"
+  },
+  "type": "row",
+  "theme": {
+    "light": "claude-light",
+    "dark": "claude-dark"
+  },
+  "preview": "layouts/claude.svg",
+  "titlebar": "none",
+  "traffic_lights": [
+    12,
+    16
+  ],
+  "background": "canvas",
+  "terminal_padding": [
+    14,
+    12
+  ],
+  "divider": {
+    "width": 1,
+    "color": "border"
+  },
+  "children": [
+    {
+      "id": "sidebar",
+      "type": "column",
+      "hidden": true,
+      "size": {
+        "px": 268
+      },
+      "min": 220,
+      "max": 360,
+      "background": "chrome",
+      "resizable": true,
+      "children": [
+        {
+          "id": "sidebar-claude",
+          "type": "block",
+          "content": {
+            "mod": "claude-drawer",
+            "props": {
+              "pinned": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "work",
+      "type": "column",
+      "resizable": false,
+      "children": [
+        {
+          "id": "tabs",
+          "type": "block",
+          "size": {
+            "px": 42
+          },
+          "window_drag": true,
+          "content": {
+            "mod": "tabs"
+          }
+        },
+        {
+          "id": "work-body",
+          "type": "row",
+          "padding": 10,
+          "gap": 10,
+          "floating": [
+            {
+              "id": "claude-drawer",
+              "content": {
+                "mod": "claude-drawer"
+              },
+              "edge": "left",
+              "align": "center",
+              "peek": 44
+            },
+            {
+              "id": "status-toggle",
+              "content": {
+                "mod": "claude-status-toggle"
+              },
+              "edge": "right",
+              "align": "center"
+            }
+          ],
+          "children": [
+            {
+              "id": "drawer-gutter",
+              "type": "column",
+              "size": {
+                "px": 50
+              },
+              "resizable": false,
+              "children": []
+            },
+            {
+              "id": "main",
+              "type": "block",
+              "content": {
+                "tab": "active",
+                "pane": {
+                  "gap": 10,
+                  "radius": 12,
+                  "background": "background",
+                  "lone": true,
+                  "border": {
+                    "width": 1,
+                    "color": "border"
+                  },
+                  "focus": {
+                    "width": 1,
+                    "color": "input"
+                  },
+                  "header": {
+                    "content": {
+                      "mod": "claude-pane"
+                    },
+                    "height": 30,
+                    "position": "top",
+                    "reveal": "always"
+                  }
+                }
+              }
+            },
+            {
+              "id": "panel",
+              "type": "column",
+              "hidden": true,
+              "size": {
+                "px": 368
+              },
+              "min": 280,
+              "max": 900,
+              "children": [
+                {
+                  "id": "panel-body",
+                  "type": "stack",
+                  "active": "files",
+                  "children": [
+                    {
+                      "id": "files",
+                      "type": "block",
+                      "content": {
+                        "mod": "files"
+                      }
+                    },
+                    {
+                      "id": "changes",
+                      "type": "block",
+                      "content": {
+                        "mod": "changes"
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "agent-status",
+              "type": "block",
+              "size": {
+                "px": 300
+              },
+              "min": 280,
+              "max": 420,
+              "content": {
+                "mod": "claude-status"
+              }
+            }
+          ]
+        },
+        {
+          "id": "status",
+          "type": "block",
+          "size": {
+            "px": 28
+          },
+          "content": {
+            "mod": "workspace-status"
+          }
+        }
+      ]
+    }
+  ]
+}
