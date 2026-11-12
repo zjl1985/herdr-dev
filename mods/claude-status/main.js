@@ -1,6 +1,6 @@
 import { View, div, svg, image } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
-import { agents, exec, home, panes, run, setAgentOrder, spaces, theme } from "herdr";
+import { agents, exec, hc, home, panes, run, setAgentOrder, spaces, theme } from "herdr";
 
 const STATUS = {
   blocked: { label: "Needs input", color: "blocked" },
@@ -50,6 +50,12 @@ function parseGitStatus(output) {
   return result;
 }
 
+function parseKimiUsage(output) {
+  const match = output.match(/context:\s*(\d+(?:\.\d+)?)%\s*\((\d+(?:\.\d+)?[kKM]?)\s*\/\s*(\d+(?:\.\d+)?[kKM]?)\)/);
+  if (!match) return null;
+  return { percent: Number(match[1]), used: match[2], total: match[3] };
+}
+
 function taskTitle(agent, tab, space) {
   if (tab?.named && tab.name) return tab.name;
   const title = (agent?.title ?? "").replace(/^[^\p{L}\p{N}]+/u, "").trim();
@@ -66,8 +72,12 @@ export default class ClaudeStatus extends View {
   init(_props, cx) {
     this.git = null;
     this.gitKey = null;
+    this.usage = null;
+    this.usageKey = null;
     this.refreshGit(cx);
+    this.refreshUsage(cx);
     cx.timer.every(5000, (cx) => this.refreshGit(cx));
+    cx.timer.every(3000, (cx) => this.refreshUsage(cx));
     cx.timer.every(1000, (cx) => cx.notify());
   }
 
@@ -92,6 +102,27 @@ export default class ClaudeStatus extends View {
     } catch {
       if (key === this.gitKey) this.git = null;
     }
+    cx.notify();
+  }
+
+  async refreshUsage(cx) {
+    const space = spaces().find((item) => item.active) ?? spaces()[0];
+    const agentList = agents().filter((agent) => !space || agent.space === space.id);
+    const lead = agentList.find((agent) => agent.status === "blocked")
+      ?? agentList.find((agent) => agent.status === "working")
+      ?? agentList[0];
+    const key = lead?.app === "kimi-code" ? lead.address : null;
+    if (key !== this.usageKey) {
+      this.usageKey = key;
+      this.usage = null;
+      cx.notify();
+    }
+    if (!key) return;
+    try {
+      const result = await hc(["read", key, "--lines", "12"]);
+      const usage = parseKimiUsage(result.stdout ?? "");
+      if (key === this.usageKey && usage) this.usage = usage;
+    } catch {}
     cx.notify();
   }
 
@@ -290,6 +321,42 @@ export default class ClaudeStatus extends View {
               .child(div().text_size(10).text_color(t.muted).child(lead?.program?.name ?? "No active agent"))
               .child(div().text_size(10).text_color(t[leadStatus.color] ?? t.dim).child(`· ${leadStatus.label}`))
           )
+      )
+      .when(lead?.app === "kimi-code" && this.usage, (el) =>
+        el.child(
+          v_flex()
+            .id("kimi-context")
+            .w_full()
+            .bg(t.background)
+            .border(1)
+            .border_color(t.border)
+            .rounded(10)
+            .p(12)
+            .gap(8)
+            .child(
+              h_flex()
+                .w_full()
+                .items_center()
+                .justify_between()
+                .child(div().text_size(9).font_semibold().text_color(t.dim).child("KIMI CONTEXT"))
+                .child(div().text_size(13).font_semibold().text_color(t.accent).child(`${this.usage.percent}%`))
+            )
+            .child(
+              div()
+                .w_full()
+                .h(4)
+                .bg(t.border)
+                .rounded_full()
+                .child(
+                  div()
+                    .h_full()
+                    .w(Math.round(220 * Math.min(100, this.usage.percent) / 100))
+                    .rounded_full()
+                    .bg(t.accent)
+                )
+            )
+            .child(div().text_size(10).text_color(t.muted).child(`${this.usage.used} / ${this.usage.total} tokens`))
+        )
       )
       .child(
         v_flex()
