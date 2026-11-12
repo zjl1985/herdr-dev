@@ -1,6 +1,6 @@
 import { View, div, svg, image } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
-import { agents, home, panes, run, setAgentOrder, spaces, theme } from "herdr";
+import { agents, exec, home, panes, run, setAgentOrder, spaces, theme } from "herdr";
 
 const STATUS = {
   blocked: { label: "Needs input", color: "blocked" },
@@ -26,11 +26,80 @@ function folder(cwd, homeDir) {
   return cwd === homeDir ? "~" : cwd.startsWith(homeDir + "/") ? "~" + cwd.slice(homeDir.length) : cwd;
 }
 
+function formatDuration(ms) {
+  const seconds = Math.max(0, Math.floor(ms / 1000));
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ${seconds % 60}s`;
+  return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+}
+
+function parseGitStatus(output) {
+  const result = { branch: null, changed: 0, ahead: 0, behind: 0 };
+  for (const line of output.split("\n")) {
+    if (line.startsWith("# branch.head ")) result.branch = line.slice(14);
+    if (line.startsWith("# branch.ab ")) {
+      const match = line.match(/\+(\d+) -(\d+)/);
+      if (match) {
+        result.ahead = Number(match[1]);
+        result.behind = Number(match[2]);
+      }
+    }
+    if (/^(?:1|2|u|\?) /.test(line)) result.changed += 1;
+  }
+  return result;
+}
+
+function taskTitle(agent, tab, space) {
+  if (tab?.named && tab.name) return tab.name;
+  const title = (agent?.title ?? "").replace(/^[^\p{L}\p{N}]+/u, "").trim();
+  const generic = [agent?.program?.name, agent?.app, agent?.address, space?.name]
+    .filter(Boolean)
+    .map((value) => value.toLowerCase());
+  if (title && !generic.includes(title.toLowerCase()) && !/^t[0-9a-z]+$/i.test(title) && !/^[~/]/.test(title)) {
+    return title;
+  }
+  return space?.name ?? "No active task";
+}
+
 export default class ClaudeStatus extends View {
+  init(_props, cx) {
+    this.git = null;
+    this.gitKey = null;
+    this.refreshGit(cx);
+    cx.timer.every(5000, (cx) => this.refreshGit(cx));
+    cx.timer.every(1000, (cx) => cx.notify());
+  }
+
+  async refreshGit(cx) {
+    const space = spaces().find((item) => item.active) ?? spaces()[0];
+    const tab = space?.tabs?.find((item) => item.active) ?? space?.tabs?.[0];
+    const cwd = panes().find((pane) => pane.tab === tab?.id && pane.focused)?.cwd ?? space?.folder;
+    const key = `${space?.machine ?? ""}:${cwd ?? ""}`;
+    if (key !== this.gitKey) {
+      this.gitKey = key;
+      this.git = null;
+      cx.notify();
+    }
+    if (!cwd) return;
+    try {
+      const result = await exec("git", ["status", "--porcelain=v2", "--branch"], {
+        cwd,
+        on: space?.machine,
+        timeout: 5000,
+      });
+      if (key === this.gitKey) this.git = result.code === 0 ? parseGitStatus(result.stdout) : null;
+    } catch {
+      if (key === this.gitKey) this.git = null;
+    }
+    cx.notify();
+  }
+
   render() {
     const t = theme();
     const spaceList = spaces();
     const activeSpace = spaceList.find((space) => space.active) ?? spaceList[0];
+    const activeTab = activeSpace?.tabs?.find((tab) => tab.active) ?? activeSpace?.tabs?.[0];
     const paneList = panes();
     const agentList = agents()
       .filter((agent) => !activeSpace || agent.space === activeSpace.id)
@@ -47,6 +116,16 @@ export default class ClaudeStatus extends View {
       ?? agentList[0];
     const leadStatus = statusInfo(lead?.status);
     const homeDir = home();
+    const activePane = paneList.find((pane) => pane.tab === activeTab?.id && pane.focused)
+      ?? paneList.find((pane) => pane.tab === activeTab?.id);
+    const workspaceFolder = activePane?.cwd ?? activeSpace?.folder;
+    const workingMs = activeTab?.working_since ? Date.now() - activeTab.working_since : null;
+    const leadIcon = programIcon(lead?.program, 15, t[leadStatus.color] ?? t.dim);
+    const branch = this.git?.branch ?? activePane?.branch ?? activeSpace?.branch;
+    const gitDetails = [];
+    if (this.git) gitDetails.push(this.git.changed ? `${this.git.changed} changed` : "Clean");
+    if (this.git?.ahead) gitDetails.push(`↑${this.git.ahead}`);
+    if (this.git?.behind) gitDetails.push(`↓${this.git.behind}`);
 
     const summary = (id, value, label, color) =>
       v_flex()
@@ -147,7 +226,7 @@ export default class ClaudeStatus extends View {
       .border_color(t.border)
       .rounded(12)
       .p(14)
-      .gap(14)
+      .gap(12)
       .overflow_y_scrollbar()
       .child(
         h_flex()
@@ -192,10 +271,46 @@ export default class ClaudeStatus extends View {
           .rounded(10)
           .p(12)
           .gap(7)
-          .child(div().w_full().truncate().text_size(15).font_semibold().text_color(t.foreground).child(activeSpace?.name ?? "No workspace"))
-          .child(div().w_full().truncate().text_size(10.5).text_color(t.muted).child(activeSpace?.folder ?? ""))
-          .when(Boolean(activeSpace?.branch), (el) =>
-            el.child(div().text_size(10).text_color(t.accent).child(activeSpace.branch))
+          .child(
+            h_flex()
+              .w_full()
+              .items_center()
+              .justify_between()
+              .child(div().text_size(9).font_semibold().text_color(t.dim).child("CURRENT TASK"))
+              .when(workingMs !== null, (el) =>
+                el.child(div().text_size(10).font_medium().text_color(t.working).child(formatDuration(workingMs)))
+              )
+          )
+          .child(div().w_full().truncate().text_size(14).font_semibold().text_color(t.foreground).child(taskTitle(lead, activeTab, activeSpace)))
+          .child(
+            h_flex()
+              .items_center()
+              .gap(6)
+              .when(Boolean(leadIcon), (el) => el.child(leadIcon))
+              .child(div().text_size(10).text_color(t.muted).child(lead?.program?.name ?? "No active agent"))
+              .child(div().text_size(10).text_color(t[leadStatus.color] ?? t.dim).child(`· ${leadStatus.label}`))
+          )
+      )
+      .child(
+        v_flex()
+          .w_full()
+          .bg(t.background)
+          .border(1)
+          .border_color(t.border)
+          .rounded(10)
+          .p(12)
+          .gap(7)
+          .child(div().w_full().truncate().text_size(14).font_semibold().text_color(t.foreground).child(activeSpace?.name ?? "No workspace"))
+          .child(div().w_full().truncate().text_size(10.5).text_color(t.muted).child(folder(workspaceFolder, homeDir)))
+          .when(Boolean(branch), (el) =>
+            el.child(
+              h_flex()
+                .w_full()
+                .items_center()
+                .justify_between()
+                .child(div().flex_1().min_w(0).truncate().text_size(10).font_medium().text_color(t.accent).child(branch))
+                .child(div().flex_none().pl(6).text_size(9).text_color(t.dim).child(gitDetails.join(" · ")))
+            )
           )
           .child(
             div()
@@ -245,7 +360,7 @@ export default class ClaudeStatus extends View {
           .justify_center()
           .gap(5)
           .child(div().size(5).rounded_full().bg(t.done))
-          .child(div().text_size(9).text_color(t.dim).child("LIVE · HERDR ONLY"))
+          .child(div().text_size(9).text_color(t.dim).child("LIVE · HERDR + GIT"))
       );
   }
 }
