@@ -1,3 +1,12 @@
 .DS_Store
 **/gpui-kit.d.ts
 **/jsconfig.json
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+/auth.json
+/screenshots/
+/tmp/
+/*.png
