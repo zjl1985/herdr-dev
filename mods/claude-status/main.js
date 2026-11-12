@@ -56,6 +56,16 @@ function parseKimiUsage(output) {
   return { percent: Number(match[1]), used: match[2], total: match[3] };
 }
 
+function parseKimiLimits(output) {
+  const fiveHour = output.match(/5h limit[^\n]*?(\d+(?:\.\d+)?)%\s+used\s+resets in\s+([^\n│]+)/);
+  const weekly = output.match(/Weekly limit[^\n]*?(\d+(?:\.\d+)?)%\s+used\s+resets in\s+([^\n│]+)/);
+  if (!fiveHour && !weekly) return null;
+  return {
+    fiveHour: fiveHour ? { percent: Number(fiveHour[1]), resets: fiveHour[2].trim() } : null,
+    weekly: weekly ? { percent: Number(weekly[1]), resets: weekly[2].trim() } : null,
+  };
+}
+
 function taskTitle(agent, tab, space) {
   if (tab?.named && tab.name) return tab.name;
   const title = (agent?.title ?? "").replace(/^[^\p{L}\p{N}]+/u, "").trim();
@@ -74,8 +84,17 @@ export default class ClaudeStatus extends View {
     this.gitKey = null;
     this.usage = null;
     this.usageKey = null;
+    this.limitsLoading = false;
+    try {
+      this.limits = JSON.parse(localStorage.getItem("kimi.limits") ?? "null");
+    } catch {
+      this.limits = null;
+    }
     this.refreshGit(cx);
     this.refreshUsage(cx);
+    cx.timer.after(300, (cx) => {
+      if (!this.limits) this.refreshLimits(cx);
+    });
     cx.timer.every(5000, (cx) => this.refreshGit(cx));
     cx.timer.every(3000, (cx) => this.refreshUsage(cx));
     cx.timer.every(1000, (cx) => cx.notify());
@@ -126,6 +145,40 @@ export default class ClaudeStatus extends View {
     cx.notify();
   }
 
+  refreshLimits(cx) {
+    const key = this.usageKey;
+    if (!key || this.limitsLoading) return;
+    this.limitsLoading = true;
+    cx.notify();
+    cx.spawn(async (cx) => {
+      try {
+        await hc(["keys", key, "esc"]);
+        await hc(["send", key, "/usage"]);
+        cx.timer.after(1200, (cx) => {
+          cx.spawn(async (cx) => {
+            try {
+              const result = await hc(["read", key, "--lines", "45"]);
+              const limits = parseKimiLimits(result.stdout ?? "");
+              if (limits && key === this.usageKey) {
+                this.limits = { ...limits, readAt: Date.now() };
+                localStorage.setItem("kimi.limits", JSON.stringify(this.limits));
+              }
+            } catch {} finally {
+              try {
+                await hc(["keys", key, "esc"]);
+              } catch {}
+              this.limitsLoading = false;
+              cx.notify();
+            }
+          });
+        });
+      } catch {
+        this.limitsLoading = false;
+        cx.notify();
+      }
+    });
+  }
+
   render() {
     const t = theme();
     const spaceList = spaces();
@@ -157,22 +210,6 @@ export default class ClaudeStatus extends View {
     if (this.git) gitDetails.push(this.git.changed ? `${this.git.changed} changed` : "Clean");
     if (this.git?.ahead) gitDetails.push(`↑${this.git.ahead}`);
     if (this.git?.behind) gitDetails.push(`↓${this.git.behind}`);
-
-    const summary = (id, value, label, color) =>
-      v_flex()
-        .id(id)
-        .flex_1()
-        .min_w(0)
-        .bg(t.background)
-        .border(1)
-        .border_color(t.border)
-        .rounded(9)
-        .py(10)
-        .px(4)
-        .items_center()
-        .gap(3)
-        .child(div().text_size(17).font_semibold().text_color(color).child(String(value)))
-        .child(div().text_size(9).text_color(t.dim).child(label));
 
     const agentCard = (agent) => {
       const info = statusInfo(agent.status);
@@ -356,6 +393,45 @@ export default class ClaudeStatus extends View {
                 )
             )
             .child(div().text_size(10).text_color(t.muted).child(`${this.usage.used} / ${this.usage.total} tokens`))
+            .when(this.limits?.fiveHour, (el) =>
+              el.child(
+                h_flex()
+                  .w_full()
+                  .items_center()
+                  .justify_between()
+                  .child(div().text_size(10).text_color(t.foreground).child("5h limit"))
+                  .child(div().text_size(9).text_color(t.muted).child(`${this.limits.fiveHour.percent}% used · resets in ${this.limits.fiveHour.resets}`))
+              )
+            )
+            .when(this.limits?.weekly, (el) =>
+              el.child(
+                h_flex()
+                  .w_full()
+                  .items_center()
+                  .justify_between()
+                  .child(div().text_size(10).text_color(t.foreground).child("Weekly limit"))
+                  .child(div().text_size(9).text_color(t.muted).child(`${this.limits.weekly.percent}% used · resets in ${this.limits.weekly.resets}`))
+              )
+            )
+            .child(
+              h_flex()
+                .w_full()
+                .justify_end()
+                .child(
+                  div()
+                    .id("refresh-kimi-limits")
+                    .px(5)
+                    .py(2)
+                    .rounded(4)
+                    .cursor_pointer()
+                    .text_size(8)
+                    .text_color(t.dim)
+                    .hover((style) => style.bg(t.hover).text_color(t.foreground))
+                    .tooltip("Refresh plan limits")
+                    .on_click((_event, cx) => this.refreshLimits(cx))
+                    .child(this.limitsLoading ? "Refreshing…" : "Refresh limits")
+                )
+            )
         )
       )
       .child(
@@ -386,14 +462,15 @@ export default class ClaudeStatus extends View {
               .text_color(t.dim)
               .child(`${activeSpace?.tabs?.length ?? 0} tabs · ${agentList.length} agents`)
           )
-      )
-      .child(
-        h_flex()
-          .w_full()
-          .gap(6)
-          .child(summary("status-working", counts.working, "WORKING", t.working))
-          .child(summary("status-blocked", counts.blocked, "NEEDS INPUT", t.blocked))
-          .child(summary("status-done", counts.done, "FINISHED", t.done))
+          .child(
+            h_flex()
+              .w_full()
+              .items_center()
+              .gap(8)
+              .child(div().text_size(9).text_color(t.working).child(`${counts.working} working`))
+              .child(div().text_size(9).text_color(t.blocked).child(`${counts.blocked} needs input`))
+              .child(div().text_size(9).text_color(t.done).child(`${counts.done} finished`))
+          )
       )
       .child(
         h_flex()
