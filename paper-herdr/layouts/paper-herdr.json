@@ -1,0 +1,157 @@
+{
+  "id": "paper-root",
+  "type": "column",
+  "theme": "paper-herdr",
+  "preview": "layouts/paper-herdr.svg",
+  "titlebar": "none",
+  "traffic_lights": [16, 18],
+  "background": "canvas",
+  "ui_font": "Geist",
+  "font": "Geist Mono",
+  "font_size": 13,
+  "terminal_padding": [10, 14],
+  "children": [
+    {
+      "id": "paper-body",
+      "type": "row",
+      "padding": [10, 10],
+      "gap": 10,
+      "children": [
+        {
+          "id": "paper-rail",
+          "type": "block",
+          "size": { "px": 48 },
+          "resizable": false,
+          "background": "surface",
+          "radius": 14,
+          "border": { "width": 1, "color": "border" },
+          "shadow": "sm",
+          "content": { "mod": "paper-shell", "props": { "role": "rail" } }
+        },
+        {
+          "id": "sidebar",
+          "type": "block",
+          "size": { "px": 184 },
+          "min": 160,
+          "max": 260,
+          "background": "surface",
+          "radius": 14,
+          "border": { "width": 1, "color": "border" },
+          "shadow": "sm",
+          "content": { "mod": "paper-shell", "props": { "role": "nav" } }
+        },
+        {
+          "id": "work",
+          "type": "column",
+          "gap": 6,
+          "children": [
+            {
+              "id": "tabs",
+              "type": "block",
+              "size": { "px": 34 },
+              "window_drag": true,
+              "content": { "mod": "paper-shell", "props": { "role": "tabs" } }
+            },
+            {
+              "id": "main",
+              "type": "block",
+              "content": {
+                "tab": "active",
+                "pane": {
+                  "gap": 10,
+                  "radius": 14,
+                  "background": "background",
+                  "lone": true,
+                  "border": { "width": 1, "color": "border" },
+                  "focus": { "width": 1, "color": "input" },
+                  "header": {
+                    "content": { "mod": "paper-shell", "props": { "role": "pane" } },
+                    "height": 32,
+                    "position": "top",
+                    "reveal": "always"
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "panel",
+          "type": "column",
+          "hidden": true,
+          "size": { "px": 300 },
+          "min": 240,
+          "max": 420,
+          "background": "surface",
+          "radius": 14,
+          "border": { "width": 1, "color": "border" },
+          "shadow": "sm",
+          "padding": [6, 0],
+          "children": [
+            {
+              "id": "panel-body",
+              "type": "stack",
+              "active": "files",
+              "children": [
+                { "id": "files", "type": "block", "content": { "mod": "files" } },
+                { "id": "changes", "type": "block", "content": { "mod": "changes" } }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "widgets",
+          "type": "column",
+          "size": { "px": 212 },
+          "min": 196,
+          "max": 280,
+          "gap": 10,
+          "children": [
+            {
+              "id": "w-clock",
+              "type": "block",
+              "size": { "px": 118 },
+              "resizable": false,
+              "background": "surface",
+              "radius": 14,
+              "border": { "width": 1, "color": "border" },
+              "shadow": "sm",
+              "content": { "mod": "paper-widgets", "props": { "kind": "clock" } }
+            },
+            {
+              "id": "w-agents",
+              "type": "block",
+              "background": "surface",
+              "radius": 14,
+              "border": { "width": 1, "color": "border" },
+              "shadow": "sm",
+              "content": { "mod": "paper-widgets", "props": { "kind": "agents" } }
+            },
+            {
+              "id": "w-context",
+              "type": "block",
+              "size": { "px": 180 },
+              "resizable": false,
+              "background": "surface",
+              "radius": 14,
+              "border": { "width": 1, "color": "border" },
+              "shadow": "sm",
+              "content": { "mod": "paper-widgets", "props": { "kind": "context" } }
+            },
+            {
+              "id": "w-git",
+              "type": "block",
+              "size": { "px": 104 },
+              "resizable": false,
+              "background": "surface",
+              "radius": 14,
+              "border": { "width": 1, "color": "border" },
+              "shadow": "sm",
+              "content": { "mod": "paper-widgets", "props": { "kind": "git" } }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
