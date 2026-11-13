@@ -242,7 +242,7 @@ export default class ClaudeStatus extends View {
       hover: t.hover ?? t.border, selected: t.selected ?? t.border,
       line: t.border, track: t.input ?? t.border,
       text: t.foreground, muted: t.muted, dim: t.dim,
-      accent: t.accent, working: t.working ?? t.accent, ok: t.done ?? t.accent,
+      accent: t.accent, working: t.working ?? t.accent, ok: t.accent,
       warn: t.ansi3 ?? t.accent, alert: t.blocked ?? t.accent,
     };
     const space = spaces().find(s => s.active) ?? spaces()[0];
@@ -290,8 +290,9 @@ export default class ClaudeStatus extends View {
       .child(div().w_full().h(3).rounded_full().bg(c.track).overflow_hidden()
         .when(value != null, el => el.child(div().h_full().rounded_full()
           .w(`${clamp(value)}%`).bg(low ? c.warn : c.accent))));
-    const chip = (id, open) => h_flex().id(id).min_w(0).items_center().gap(5).px(7).py(4)
-      .rounded(5).border(1).border_color(c.line).bg(open ? c.selected : c.inset);
+    // Only interactive pickers get a frame; a plain model name must not look clickable.
+    const chip = (id, open, framed=true) => h_flex().id(id).min_w(0).items_center().gap(5).py(4)
+      .when(framed, el => el.px(7).rounded(5).border(1).border_color(c.line).bg(open ? c.selected : c.inset));
     const icon = programIcon(lead?.program, 12, c.muted);
     const sync = this.git?.ahead || this.git?.behind ? `  ↑${this.git.ahead} ↓${this.git.behind}` : '';
     const options = this.picker?.kind === 'model'
@@ -328,7 +329,7 @@ export default class ClaudeStatus extends View {
         .child(div().w_full().text_size(13).font_semibold().truncate().text_color(c.text).child(title))
         .child(text(folder(cwd,home()) || '—',9,c.muted).w_full().truncate().tooltip(cwd ?? ''))
         .child(h_flex().w_full().pt(4).items_center().gap(6)
-          .child(chip('codex-model-picker', pickerOpen('model'))
+          .child(chip('codex-model-picker', pickerOpen('model'), isCodex)
             .when(isCodex, el => el.cursor_pointer().hover(s=>s.bg(c.hover))
               .tooltip('选择当前会话的模型').on_click((_e,cx)=>this.togglePicker('model',lead.address,cx)))
             .child(text(model,10,c.text).truncate())
@@ -359,7 +360,6 @@ export default class ClaudeStatus extends View {
         .when(isKimi,el=>el.child(text(this.limitsLoading ? 'Refreshing…' : '↻ Refresh limits',9,c.muted)
           .id('refresh-kimi-limits').cursor_pointer().hover(s=>s.text_color(c.text)).on_click((_e,cx)=>this.refreshLimits(cx)))))
       .child(section('Workspace')
-        .child(row('Turn',elapsed,working ? c.text : c.muted))
         .child(h_flex().w_full().items_center().justify_between().gap(10)
           .child(text(branch ? `⑂ ${branch}` : 'No branch',10,branch ? c.muted : c.dim).min_w(0).truncate())
           .child(text((this.git ? (this.git.changed ? `${this.git.changed} changed` : 'Clean') : branch ? '' : 'No repository') + sync,9,this.git?.changed ? c.warn : c.dim).flex_none())))
