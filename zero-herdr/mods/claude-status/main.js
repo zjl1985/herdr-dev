@@ -238,9 +238,12 @@ export default class ClaudeStatus extends View {
   render() {
     const t = theme();
     const c = {
-      bg: t.surface, card: t.background, inset: t.canvas ?? t.background,
-      border: t.border, text: t.foreground, muted: t.muted, dim: t.dim,
-      green: t.accent, cyan: t.accent, amber: t.ansi3 ?? t.accent,
+      bg: t.surface, inset: t.canvas ?? t.background,
+      hover: t.hover ?? t.border, selected: t.selected ?? t.border,
+      line: t.border, track: t.input ?? t.border,
+      text: t.foreground, muted: t.muted, dim: t.dim,
+      accent: t.accent, working: t.working ?? t.accent, ok: t.done ?? t.accent,
+      warn: t.ansi3 ?? t.accent, alert: t.blocked ?? t.accent,
     };
     const space = spaces().find(s => s.active) ?? spaces()[0];
     const tab = space?.tabs?.find(t => t.active) ?? space?.tabs?.[0];
@@ -250,132 +253,125 @@ export default class ClaudeStatus extends View {
     const key = lead?.app === 'codex' ? JSON.stringify([lead.address, pane?.cwd, lead.title?.replace(/^[^\p{L}\p{N}]+/u, '')]) : null;
     const codex = key && key === this.codexKey ? this.codex : null;
     const isKimi = lead?.app === 'kimi-code';
+    const isCodex = lead?.app === 'codex';
     const context = codex?.context ?? (isKimi ? this.usage : null);
     const weekly = codex?.weekly?.left ?? (isKimi && this.limits?.weekly ? 100-this.limits.weekly.percent : null);
     const fiveHour = codex?.fiveHour?.left ?? (isKimi && this.limits?.fiveHour ? 100-this.limits.fiveHour.percent : null);
     const working = lead?.status === 'working';
     const state = statusInfo(lead?.status);
-    const stateColor = lead?.status === 'blocked' ? c.amber : working || lead?.status === 'done' ? c.green : c.muted;
+    const toneOf = status => status === 'working' ? c.working : status === 'blocked' ? c.alert : status === 'done' ? c.ok : c.dim;
+    const stateColor = lead ? toneOf(lead.status) : c.dim;
     const cwd = codex?.cwd ?? pane?.cwd ?? space?.folder;
     const title = codex?.title ?? taskTitle(lead, tab, space);
     const model = codex?.model?.replace(/^gpt/i, 'GPT').replace(/astra/i, 'Astra') ?? lead?.program?.name ?? 'No active session';
     const elapsed = tab?.working_since ? formatDuration(Date.now()-tab.working_since) : '—';
     const branch = this.git?.branch ?? pane?.branch;
+    const pickerOpen = kind => this.picker?.kind === kind && this.picker?.address === lead?.address;
     setAgentOrder(list.map(a => a.address));
 
     const text = (value, size=10, color=c.muted) => div().text_size(size).text_color(color).child(String(value));
-    const dot = (color, pulse=false) => div().size(5).flex_none().rounded_full().bg(color)
-      .when(pulse, el => el.loop('opacity', { from: 0.3, to: 1, period: 1600 }));
-    const label = (value, color=c.dim) => text(value, 9, color).font_semibold();
-    const badge = (value, color=c.green) => text(value, 8, color).px(5).py(2)
-      .border_l(2).border_color(color).bg(c.inset);
-    const card = () => v_flex().w_full().border_t(1).border_color(c.border).pt(7).pb(2).gap(6);
-    const heading = (value, right=null) => h_flex().w_full().items_center().justify_between()
-      .child(h_flex().gap(7).items_center()
-        .child(div().w(3).h(11).bg(c.green)).child(label(value,c.text)))
-      .when(Boolean(right), el => el.child(right));
-    // Instrument ticks express a real 0–100 scale, including an explicit unknown state.
-    const meter = (percent, color) => v_flex().w_full().gap(3)
-      .child(h_flex().w_full().gap(2).children(Array.from({length:32}, (_,i) =>
-        div().flex_1().h(7).bg(percent != null && i < Math.round(Math.max(0,Math.min(100,percent))*32/100) ? color : c.border))))
-      .child(h_flex().w_full().justify_between().children(Array.from({length:17},(_,i)=>
-        div().w(1).h(i%4===0 ? 5 : 2).bg(i%4===0 ? c.muted : c.border))));
-    const metric = (name, value, suffix, color, percent) => v_flex().w_full().gap(5)
+    const dot = (color, pulse=false, size=5) => div().size(size).flex_none().rounded_full().bg(color)
+      .when(pulse, el => el.loop('opacity', { from: 0.35, to: 1, period: 1600 }));
+    const label = (value, color=c.dim) => text(value, 9, color).font_medium();
+    const section = (name, right=null) => v_flex().w_full().gap(6).pt(10).border_t(1).border_color(c.line)
       .child(h_flex().w_full().items_center().justify_between()
-        .child(label(name,c.muted))
-        .child(h_flex().items_center().gap(4)
-          .child(text(value == null ? '—' : value,18,value == null ? c.dim : color).font_semibold())
-          .child(text(value == null ? 'NO SIGNAL' : '% '+suffix.toUpperCase(),8,c.dim))))
-      .child(meter(percent,color))
-      .child(h_flex().w_full().justify_between()
-        .children(['0','25','50','75','100'].map(n=>text(n,7,c.dim))));
-    const row = (name, value, color=c.muted) => h_flex().w_full().justify_between().gap(10)
-      .child(text(name,10,c.dim)).child(text(value,10,color).min_w(0).truncate());
+        .child(label(name))
+        .when(Boolean(right), el => el.child(right)));
+    const row = (name, value, color=c.muted) => h_flex().w_full().items_center().justify_between().gap(10)
+      .child(text(name,10,c.dim).flex_none()).child(text(value,10,color).min_w(0).truncate());
+    const clamp = value => Math.max(0, Math.min(100, Number(value) || 0));
+    // A thin track whose fill width is the real percentage; null renders as an empty track.
+    const meter = (name, value, suffix, low) => v_flex().w_full().gap(5)
+      .child(h_flex().w_full().items_end().justify_between()
+        .child(text(name,10,c.muted))
+        .child(h_flex().items_end().gap(4)
+          .child(text(value == null ? '—' : `${Math.round(value)}%`,11,value == null ? c.dim : c.text).font_medium())
+          .when(value != null, el => el.child(text(suffix,8,c.dim)))))
+      .child(div().w_full().h(3).rounded_full().bg(c.track).overflow_hidden()
+        .when(value != null, el => el.child(div().h_full().rounded_full()
+          .w(`${clamp(value)}%`).bg(low ? c.warn : c.accent))));
+    const chip = (id, open) => h_flex().id(id).min_w(0).items_center().gap(5).px(7).py(4)
+      .rounded(5).border(1).border_color(c.line).bg(open ? c.selected : c.inset);
+    const icon = programIcon(lead?.program, 12, c.muted);
+    const sync = this.git?.ahead || this.git?.behind ? `  ↑${this.git.ahead} ↓${this.git.behind}` : '';
+    const options = this.picker?.kind === 'model'
+      ? (codex?.models ?? []).map(m=>({value:m.id,label:m.name,selected:m.id===codex?.model}))
+      : (codex?.models?.find(m=>m.id===codex?.model)?.efforts ?? []).map(e=>({value:e,label:e,selected:e===codex?.effort}));
 
-    return v_flex().id('claude-status-root').size_full().bg(c.bg).border(1).border_color(c.border)
-      .rounded(4).p(10).gap(7).font_family('Geist Mono').overflow_hidden()
+    return v_flex().id('claude-status-root').size_full().bg(c.bg).border(1).border_color(c.line)
+      .rounded(6).p(12).gap(12).font_family('Geist Mono').overflow_hidden()
       .child(h_flex().w_full().items_center().justify_between()
-        .child(h_flex().gap(7).items_center().child(dot(c.green,working)).child(text('HERDR  /  TELEMETRY',10,c.text).font_semibold()))
-        .child(div().id('status-close').size(18).flex().items_center().justify_center().cursor_pointer()
-          .text_color(c.dim).hover(s=>s.text_color(c.text)).tooltip('Hide status panel')
+        .child(h_flex().min_w(0).gap(7).items_center()
+          .child(icon ?? dot(stateColor, working))
+          .child(text(lead?.program?.name ?? 'Status',10,c.text).font_medium().truncate()))
+        .child(div().id('status-close').size(20).flex_none().flex().items_center().justify_center().rounded(5)
+          .cursor_pointer().text_color(c.dim).hover(s=>s.bg(c.hover).text_color(c.text)).tooltip('Hide status panel')
           .on_click(()=>run('layout.hide',{id:'agent-status'}))
           .child(svg('mods/workspace-chrome/panel-right.svg').size(12))))
-      .child(h_flex().id('session-signal-banner').w_full().h(42).flex_none()
-        .px(10).bg(c.inset).border_l(2).border_color(stateColor)
-        .items_center().justify_between().gap(12)
-        .child(h_flex().items_center().gap(9)
-          .child(div().w(2).h(24).rounded(1).bg(stateColor)
-            .when(working, el=>el.loop('opacity',{from:0.4,to:1,period:1900})))
-          .child(v_flex().gap(4)
-            .child(text(working ? 'IN PROGRESS' : lead?.status === 'blocked' ? 'NEEDS INPUT' : lead?.status === 'done' ? 'COMPLETE' : 'READY',10,stateColor).font_semibold())
-            .child(text((lead?.program?.name ?? 'Herdr') + ' / ' + (working ? 'Session active' : 'Standing by'),8,c.dim))))
-        .child(h_flex().h(28).flex_none().items_end().gap(4)
+      .child(h_flex().id('session-signal-banner').w_full().h(36).flex_none()
+        .px(10).rounded(6).bg(c.inset).border(1).border_color(c.line)
+        .items_center().justify_between().gap(10)
+        .child(h_flex().min_w(0).items_center().gap(8)
+          .child(dot(stateColor, working, 6))
+          .child(v_flex().min_w(0).gap(2)
+            .child(text(working ? 'Working' : lead?.status === 'blocked' ? 'Needs input' : lead?.status === 'done' ? 'Finished' : 'Ready',10,working || lead?.status === 'blocked' || lead?.status === 'done' ? stateColor : c.text).font_medium())
+            .child(text(working ? `Turn ${elapsed}` : 'Standing by',8,c.dim).truncate())))
+        .child(h_flex().h(16).flex_none().items_end().gap(2)
           .tooltip('会话活动指示')
-          .children([8,14,22,16,26,20,12,18,9].map((height,i)=>
-            div().id('signal-bar-'+i).w(3).h(working ? height : 4+(i%3)*2).rounded(1)
-              .bg(i%3 === 0 ? c.dim : stateColor)
-              .when(working,el=>el.loop('height',{from:4+(i%3)*2,to:height,period:880+i*137})
-                .loop('opacity',{from:0.35,to:1,period:1150+i*93}))))))
-      .child(card().gap(8)
-        .child(h_flex().w_full().justify_between().items_center()
-          .child(label(lead?.app === 'codex' ? '01 / CODEX SESSION' : '01 / ACTIVE SESSION',c.green))
-          .child(badge(state.label.toUpperCase(),stateColor)))
-        .child(div().w_full().text_size(14).font_semibold().truncate().text_color(c.text).child(title))
-        .child(text(folder(cwd,home()),9,c.muted).w_full().truncate().tooltip(cwd ?? ''))
-        .child(h_flex().w_full().pt(6).border_t(1).border_color(c.border).items_center().justify_between().gap(8)
-          .child(h_flex().id('codex-model-picker').min_w(0).gap(6).items_center().px(3).py(4).rounded(4)
-            .when(lead?.app === 'codex', el => el.cursor_pointer().hover(s=>s.bg(c.border))
+          .children([7,12,16,10,14,8,11].map((height,i)=>
+            div().id('signal-bar-'+i).w(2).h(working ? height : 2+(i%2)*2).rounded_full()
+              .bg(working ? c.working : c.dim)
+              .when(working,el=>el.loop('height',{from:3+(i%3),to:height,period:880+i*137})
+                .loop('opacity',{from:0.4,to:1,period:1150+i*93}))))))
+      .child(section('Session', h_flex().items_center().gap(5).px(6).py(2).rounded_full()
+          .border(1).border_color(c.line).child(dot(stateColor,false,4)).child(text(state.label,8,c.muted)))
+        .child(div().w_full().text_size(13).font_semibold().truncate().text_color(c.text).child(title))
+        .child(text(folder(cwd,home()) || '—',9,c.muted).w_full().truncate().tooltip(cwd ?? ''))
+        .child(h_flex().w_full().pt(4).items_center().gap(6)
+          .child(chip('codex-model-picker', pickerOpen('model'))
+            .when(isCodex, el => el.cursor_pointer().hover(s=>s.bg(c.hover))
               .tooltip('选择当前会话的模型').on_click((_e,cx)=>this.togglePicker('model',lead.address,cx)))
-            .child(dot(c.cyan)).child(text(model,10,c.cyan).font_semibold().truncate())
-            .when(lead?.app === 'codex', el=>el.child(text('⌄',10,c.dim))))
-          .when(Boolean(codex?.effort),el=>el.child(badge(codex.effort+' ⌄',c.cyan)
-            .id('codex-effort-picker').cursor_pointer().hover(s=>s.bg(c.border)).tooltip('选择推理强度')
-            .on_click((_e,cx)=>this.togglePicker('effort',lead.address,cx)))))
+            .child(text(model,10,c.text).truncate())
+            .when(isCodex, el=>el.child(text('⌄',10,c.dim))))
+          .when(Boolean(codex?.effort),el=>el.child(chip('codex-effort-picker', pickerOpen('effort')).flex_none()
+            .cursor_pointer().hover(s=>s.bg(c.hover)).tooltip('选择推理强度')
+            .on_click((_e,cx)=>this.togglePicker('effort',lead.address,cx))
+            .child(text(codex.effort,10,c.text)).child(text('⌄',10,c.dim)))))
         .when(this.picker?.address === lead?.address && Boolean(this.picker), el=>el.child(
-          v_flex().id('codex-options').w_full().max_h(210).overflow_y_scrollbar().gap(3)
-            .pt(8).border_t(1).border_color(c.border)
-            .child(label(this.picker.kind === 'model' ? 'SELECT MODEL' : 'REASONING EFFORT'))
-            .children((this.picker.kind === 'model'
-              ? (codex?.models ?? []).map(m=>({value:m.id,label:m.name,selected:m.id===codex?.model}))
-              : (codex?.models?.find(m=>m.id===codex?.model)?.efforts ?? []).map(e=>({value:e,label:e,selected:e===codex?.effort})))
-              .map(option=>h_flex().id('codex-option-'+option.value).w_full().px(8).py(7).rounded(4)
-                .bg(option.selected ? c.border : c.inset).items_center().justify_between().cursor_pointer()
-                .hover(s=>s.bg(c.border)).tooltip(this.switching ? '正在发送…' : option.label)
+          v_flex().id('codex-options').w_full().max_h(210).overflow_y_scrollbar().gap(1)
+            .p(4).rounded(6).bg(c.inset).border(1).border_color(c.line)
+            .child(text(this.picker.kind === 'model' ? 'Model' : 'Reasoning',9,c.dim).px(6).pt(2).pb(4))
+            .children(options.map(option=>h_flex().id('codex-option-'+option.value).w_full().px(6).py(5).rounded(4)
+                .when(option.selected, el=>el.bg(c.selected)).items_center().justify_between().cursor_pointer()
+                .hover(s=>s.bg(c.hover)).tooltip(this.switching ? '正在发送…' : option.label)
                 .on_click((_e,cx)=>{ if (!this.switching) { const selection = this.picker.kind==='model' ? {model:option.value} : {effort:option.value}; cx.spawn(cx=>this.selectCodexOption(lead,selection,cx)); } })
-                .child(text(option.label,10,option.selected?c.cyan:c.text))
-                .child(text(option.selected?'✓':'',10,c.cyan))))
-            .when(!codex?.models?.length, el=>el.child(text('模型目录尚未就绪',10,c.dim)))
+                .child(text(option.label,10,option.selected?c.text:c.muted))
+                .child(text(option.selected?'✓':'',10,c.accent))))
+            .when(!codex?.models?.length, el=>el.child(text('模型目录尚未就绪',10,c.dim).px(6).py(4)))
         )))
-      .child(card()
-        .child(heading('02 / CAPACITY',label(context || weekly !== null ? 'TELEMETRY' : 'AWAITING DATA',c.dim)))
-        .child(v_flex().w_full().gap(7)
-          .child(metric('CONTEXT',context?.percent ?? null,'used',c.cyan,context?.percent ?? null))
-          .child(metric('WEEKLY',weekly,'left',c.green,weekly)))
-        .when(fiveHour !== null, el=>el.child(row('5-hour remaining',`${fiveHour}%`,c.green)))
+      .child(section('Usage')
+        .child(v_flex().w_full().gap(9)
+          .child(meter('Context',context?.percent ?? null,'used',(context?.percent ?? 0) >= 80))
+          .child(meter('Weekly',weekly,'left',weekly != null && weekly <= 20)))
+        .when(fiveHour !== null, el=>el.child(row('5-hour left',`${fiveHour}%`,fiveHour <= 20 ? c.warn : c.muted)))
         .when(Boolean(codex?.weekly?.resetsAt), el=>el.child(row('Weekly reset',new Date(codex.weekly.resetsAt*1000).toLocaleDateString('en-US',{month:'short',day:'numeric'}))))
-        .when(Boolean(codex?.error),el=>el.child(text(codex.error,8,c.muted)))
-        .when(isKimi,el=>el.child(text(this.limitsLoading ? 'Refreshing…' : '↻ Refresh limits',9,c.green)
-          .id('refresh-kimi-limits').cursor_pointer().on_click((_e,cx)=>this.refreshLimits(cx)))))
-      .child(card()
-        .child(heading('03 / RUNTIME',label(working ? 'ACTIVE' : 'STANDBY',stateColor)))
-        .child(h_flex().w_full().gap(7)
-          .child(v_flex().flex_1().gap(5).child(label('TURN')).child(text(elapsed,18,c.cyan)))
-          .child(v_flex().flex_1().border_l(1).border_color(c.border).pl(12).gap(5).child(label('AGENTS')).child(text(String(list.length).padStart(2,'0'),18,c.green))))
-        .child(h_flex().w_full().pt(9).border_t(1).border_color(c.border).justify_between().gap(8)
-          .child(text(branch ? `⑂ ${branch}` : 'Git',10,c.muted).min_w(0).truncate())
-          .child(text(this.git ? (this.git.changed ? `${this.git.changed} changed` : 'Clean') : branch ? '' : 'No repository',9,this.git?.changed ? c.amber : c.dim)))
-        .when(Boolean(this.git?.ahead || this.git?.behind),el=>el.child(row('Sync',`↑ ${this.git.ahead}  ↓ ${this.git.behind}`))))
-      .child(v_flex().w_full().gap(7)
-        .child(h_flex().w_full().justify_between().child(label('04 / CONNECTED',c.muted)).child(label(String(list.length).padStart(2,'0'))))
-        .max_h(90).overflow_y_scrollbar().children(list.map(agent=>h_flex().id(`status-agent-${agent.address}`).w_full().items_center().gap(8)
-          .px(8).py(8).bg(c.inset).border_l(2).border_color(agent.focused ? c.green : c.border).cursor_pointer()
-          .hover(s=>s.bg(c.border)).on_click(()=>run('pane.focus',{pane:agent.pane}))
-          .child(dot(agent.status==='working' ? c.green : agent.status==='blocked' ? c.amber : c.dim,agent.status==='working'))
-          .child(text(agent.program?.name ?? 'Agent',10,c.text).flex_1())
-          .child(text(statusInfo(agent.status).label.toLowerCase(),9,c.muted)))))
+        .when(Boolean(codex?.error),el=>el.child(text(codex.error,8,c.dim)))
+        .when(isKimi,el=>el.child(text(this.limitsLoading ? 'Refreshing…' : '↻ Refresh limits',9,c.muted)
+          .id('refresh-kimi-limits').cursor_pointer().hover(s=>s.text_color(c.text)).on_click((_e,cx)=>this.refreshLimits(cx)))))
+      .child(section('Workspace')
+        .child(row('Turn',elapsed,working ? c.text : c.muted))
+        .child(h_flex().w_full().items_center().justify_between().gap(10)
+          .child(text(branch ? `⑂ ${branch}` : 'No branch',10,branch ? c.muted : c.dim).min_w(0).truncate())
+          .child(text((this.git ? (this.git.changed ? `${this.git.changed} changed` : 'Clean') : branch ? '' : 'No repository') + sync,9,this.git?.changed ? c.warn : c.dim).flex_none())))
+      .child(section('Agents', text(String(list.length),9,c.dim))
+        .child(v_flex().id('status-agent-list').w_full().gap(1).max_h(90).overflow_y_scrollbar()
+          .children(list.map(agent=>h_flex().id(`status-agent-${agent.address}`).w_full().items_center().gap(8)
+            .px(7).py(5).rounded(5).when(agent.focused, el=>el.bg(c.selected)).cursor_pointer()
+            .hover(s=>s.bg(c.hover)).on_click(()=>run('pane.focus',{pane:agent.pane}))
+            .child(dot(toneOf(agent.status),agent.status==='working'))
+            .child(text(agent.program?.name ?? 'Agent',10,agent.focused ? c.text : c.muted).flex_1().min_w(0).truncate())
+            .child(text(statusInfo(agent.status).label.toLowerCase(),9,c.dim).flex_none())))))
       .child(div().flex_1())
-      .child(h_flex().w_full().items_center().justify_between().pt(8).border_t(1).border_color(c.border)
-        .child(h_flex().gap(5).items_center().child(dot(c.green)).child(label(space?.machine ? 'REMOTE / LINK' : 'LOCAL / LINK',c.green)))
-        .child(text('SYS / '+String(list.length).padStart(2,'0'),8,c.dim)));
+      .child(text(space?.machine ?? 'local',8,c.dim).truncate());
   }
 }
