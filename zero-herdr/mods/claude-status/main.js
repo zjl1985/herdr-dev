@@ -348,21 +348,21 @@ export default class ClaudeStatus extends View {
     const row = (name, value, color=c.muted) => h_flex().w_full().items_center().justify_between().gap(10)
       .child(text(name,10,c.dim).flex_none()).child(text(value,10,color).min_w(0).truncate());
     const clamp = value => Math.max(0, Math.min(100, Number(value) || 0));
-    // Instrument ticks express a real 0–100 scale with 32 segments and ruler ticks.
-    const meterBar = (percent, color) => v_flex().w_full().gap(3)
-      .child(h_flex().w_full().gap(2).children(Array.from({length:32}, (_,i) =>
-        div().flex_1().h(7).rounded(1).bg(percent != null && i < Math.round(clamp(percent)*32/100) ? color : c.track))))
-      .child(h_flex().w_full().justify_between().children(Array.from({length:17},(_,i)=>
-        div().w(1).h(i%4===0 ? 5 : 2).bg(i%4===0 ? c.muted : c.line))))
+    // Instrument ticks express a real 0–100 scale with 32 segments (full) or 16 segments (half).
+    const meterBar = (percent, color, segments = 32) => v_flex().w_full().gap(3)
+      .child(h_flex().w_full().gap(2).children(Array.from({length: segments}, (_, i) =>
+        div().flex_1().h(7).rounded(1).bg(percent != null && i < Math.round(clamp(percent) * segments / 100) ? color : c.track))))
+      .child(h_flex().w_full().justify_between().children(Array.from({length: segments === 16 ? 9 : 17}, (_, i) =>
+        div().w(1).h(i % 4 === 0 ? 5 : 2).bg(i % 4 === 0 ? c.muted : c.line))))
       .child(h_flex().w_full().justify_between()
-        .children(['0','25','50','75','100'].map(n=>text(n,7,c.dim))));
-    const metric = (name, value, suffix, color, percent) => v_flex().w_full().gap(5)
+        .children((segments === 16 ? ['0', '50', '100'] : ['0', '25', '50', '75', '100']).map(n => text(n, 7, c.dim))));
+    const metric = (name, value, suffix, color, percent, half = false) => v_flex().when(half, el => el.flex_1().min_w(0), el => el.w_full()).gap(4)
       .child(h_flex().w_full().items_center().justify_between()
-        .child(label(name,c.muted))
-        .child(h_flex().items_baseline().gap(4)
-          .child(text(value == null ? '—' : Math.round(value),18,value == null ? c.dim : color).font_semibold())
-          .child(text(value == null ? 'NO DATA' : '% '+suffix.toUpperCase(),8,c.dim))))
-      .child(meterBar(percent,color));
+        .child(label(name, c.muted))
+        .child(h_flex().items_baseline().gap(3)
+          .child(text(value == null ? '—' : Math.round(value), half ? 15 : 18, value == null ? c.dim : color).font_semibold())
+          .child(text(value == null ? 'NO DATA' : '% ' + suffix.toUpperCase(), 7, c.dim))))
+      .child(meterBar(percent, color, half ? 16 : 32));
     const creditMetric = (credits) => v_flex().w_full().gap(5)
       .child(h_flex().w_full().items_center().justify_between()
         .child(label('CREDITS',c.muted))
@@ -379,7 +379,8 @@ export default class ClaudeStatus extends View {
 
     const hasContext = context?.percent != null;
     const hasWeekly = weekly != null;
-    const hasUsageData = hasContext || hasWeekly || fiveHour != null || credits != null || weeklyReset != null;
+    const has5h = fiveHour != null;
+    const hasUsageData = hasContext || hasWeekly || has5h || credits != null || weeklyReset != null;
 
     return v_flex().id('claude-status-root').size_full().bg(c.bg).border(1).border_color(c.line)
       .rounded(6).p(12).gap(12).font_family('Geist Mono').overflow_hidden()
@@ -434,10 +435,13 @@ export default class ClaudeStatus extends View {
         )))
       .child(section('Usage')
         .child(v_flex().w_full().gap(10)
-          .when(hasContext, el => el.child(metric('CONTEXT', context.percent, 'used', (context.percent >= 80 ? c.warn : c.accent), context.percent)))
-          .when(hasWeekly, el => el.child(metric('WEEKLY', weekly, 'left', (weekly <= 20 ? c.warn : c.accent), weekly)))
+          .when(hasContext, el => el.child(metric('CONTEXT', context.percent, 'used', (context.percent >= 80 ? c.warn : c.accent), context.percent, false)))
+          .when(hasWeekly && has5h, el => el.child(h_flex().w_full().gap(8)
+            .child(metric('5-HOUR', fiveHour, 'left', (fiveHour <= 20 ? c.warn : c.accent), fiveHour, true))
+            .child(metric('WEEKLY', weekly, 'left', (weekly <= 20 ? c.warn : c.accent), weekly, true))))
+          .when(hasWeekly && !has5h, el => el.child(metric('WEEKLY', weekly, 'left', (weekly <= 20 ? c.warn : c.accent), weekly, false)))
+          .when(!hasWeekly && has5h, el => el.child(metric('5-HOUR', fiveHour, 'left', (fiveHour <= 20 ? c.warn : c.accent), fiveHour, false)))
           .when(credits != null, el => el.child(creditMetric(credits)))
-          .when(fiveHour != null, el => el.child(row('5-hour left', `${Math.round(fiveHour)}%`, fiveHour <= 20 ? c.warn : c.muted)))
           .when(weeklyReset != null, el => el.child(row('Weekly reset', new Date(weeklyReset * 1000).toLocaleDateString('en-US',{month:'short',day:'numeric'}))))
           .when(Boolean(codex?.error ?? agy?.error), el => el.child(text((codex?.error ?? agy?.error),8,c.dim)))
           .when(!hasUsageData && !(codex?.error ?? agy?.error), el => el.child(text('—',10,c.dim)))
