@@ -56,16 +56,6 @@ function parseKimiUsage(output) {
   return { percent: Number(match[1]), used: match[2], total: match[3] };
 }
 
-function parseKimiLimits(output) {
-  const fiveHour = output.match(/5h limit[^\n]*?(\d+(?:\.\d+)?)%\s+used\s+resets in\s+([^\n│]+)/);
-  const weekly = output.match(/Weekly limit[^\n]*?(\d+(?:\.\d+)?)%\s+used\s+resets in\s+([^\n│]+)/);
-  if (!fiveHour && !weekly) return null;
-  return {
-    fiveHour: fiveHour ? { percent: Number(fiveHour[1]), resets: fiveHour[2].trim() } : null,
-    weekly: weekly ? { percent: Number(weekly[1]), resets: weekly[2].trim() } : null,
-  };
-}
-
 function taskTitle(agent, tab, space) {
   if (tab?.named && tab.name) return tab.name;
   const title = (agent?.title ?? "").replace(/^[^\p{L}\p{N}]+/u, "").trim();
@@ -106,8 +96,10 @@ export default class ZeroHerdr extends View {
     this.gitKey = null;
     this.usage = null;
     this.usageKey = null;
+    this.limitsLoading = false;
     try {
       this.limits = JSON.parse(localStorage.getItem("kimi.limits") ?? "null");
+      if (this.limits?.fiveHour?.left == null && this.limits?.weekly?.left == null) this.limits = null;
     } catch {
       this.limits = null;
     }
@@ -119,6 +111,8 @@ export default class ZeroHerdr extends View {
     cx.timer.every(3000, (cx) => cx.spawn((cx) => this.refreshKiro(cx)));
     cx.spawn((cx) => this.refreshAgy(cx));
     cx.timer.every(3000, (cx) => cx.spawn((cx) => this.refreshAgy(cx)));
+    cx.spawn((cx) => this.refreshLimits(cx));
+    cx.timer.every(60000, (cx) => cx.spawn((cx) => this.refreshLimits(cx)));
     cx.timer.every(5000, (cx) => this.refreshGit(cx));
     cx.timer.every(3000, (cx) => this.refreshUsage(cx));
     cx.timer.every(1000, (cx) => {
@@ -235,21 +229,33 @@ export default class ZeroHerdr extends View {
     if (key !== this.usageKey) {
       this.usageKey = key;
       this.usage = null;
+      if (key) cx.spawn((cx) => this.refreshLimits(cx));
       cx.notify();
     }
     if (!key) return;
     try {
       const result = await hc(["read", key, "--lines", "45"]);
-      const output = result.stdout ?? "";
-      const usage = parseKimiUsage(output);
-      const limits = parseKimiLimits(output);
+      const usage = parseKimiUsage(result.stdout ?? "");
       if (key === this.usageKey && usage) this.usage = usage;
-      if (key === this.usageKey && limits) {
+    } catch {}
+    cx.notify();
+  }
+
+  async refreshLimits(cx) {
+    const { space, lead } = activeAgent();
+    if (lead?.app !== "kimi-code" || space?.machine || this.limitsLoading) return;
+    this.limitsLoading = true;
+    try {
+      const result = await exec("node", [appHome() + "/mods/zero-herdr/kimi-status.cjs"], { timeout: 10000 });
+      const limits = JSON.parse(result.stdout);
+      if (!limits.error) {
         this.limits = { ...limits, readAt: Date.now() };
         localStorage.setItem("kimi.limits", JSON.stringify(this.limits));
       }
-    } catch {}
-    cx.notify();
+    } catch {} finally {
+      this.limitsLoading = false;
+      cx.notify();
+    }
   }
 
   render() {
@@ -276,9 +282,9 @@ export default class ZeroHerdr extends View {
     const isKimi = lead?.app === 'kimi-code';
     const isCodex = lead?.app === 'codex';
     const context = codex?.context ?? kiro?.context ?? agy?.context ?? (isKimi ? this.usage : null);
-    const weekly = codex?.weekly?.left ?? agy?.weekly?.left ?? (isKimi && this.limits?.weekly ? 100-this.limits.weekly.percent : null);
-    const fiveHour = codex?.fiveHour?.left ?? agy?.fiveHour?.left ?? (isKimi && this.limits?.fiveHour ? 100-this.limits.fiveHour.percent : null);
-    const weeklyReset = codex?.weekly?.resetsAt ?? agy?.weekly?.resetsAt ?? null;
+    const weekly = codex?.weekly?.left ?? agy?.weekly?.left ?? (isKimi ? this.limits?.weekly?.left : null);
+    const fiveHour = codex?.fiveHour?.left ?? agy?.fiveHour?.left ?? (isKimi ? this.limits?.fiveHour?.left : null);
+    const weeklyReset = codex?.weekly?.resetsAt ?? agy?.weekly?.resetsAt ?? (isKimi ? this.limits?.weekly?.resetsAt : null);
     const working = lead?.status === 'working';
     const toneOf = status => status === 'working' ? c.working : status === 'blocked' ? c.alert : status === 'done' ? c.ok : c.dim;
     const stateColor = lead ? toneOf(lead.status) : c.dim;
