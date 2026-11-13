@@ -85,6 +85,9 @@ export default class ClaudeStatus extends View {
     this.codex = null;
     this.codexKey = null;
     this.codexLoading = false;
+    this.kiro = null;
+    this.kiroKey = null;
+    this.kiroLoading = false;
     this.git = null;
     this.gitKey = null;
     this.usage = null;
@@ -99,6 +102,8 @@ export default class ClaudeStatus extends View {
     this.refreshUsage(cx);
     cx.spawn((cx) => this.refreshCodex(cx));
     cx.timer.every(3000, (cx) => cx.spawn((cx) => this.refreshCodex(cx)));
+    cx.spawn((cx) => this.refreshKiro(cx));
+    cx.timer.every(3000, (cx) => cx.spawn((cx) => this.refreshKiro(cx)));
     cx.timer.after(300, (cx) => {
       if (!this.limits) this.refreshLimits(cx);
     });
@@ -154,6 +159,25 @@ export default class ClaudeStatus extends View {
       if (key === this.codexKey) this.codex = JSON.parse(result.stdout);
     } catch { if (key === this.codexKey) this.codex = { error: "Codex session data unavailable" }; }
     finally { this.codexLoading = false; cx.notify(); }
+  }
+
+  async refreshKiro(cx) {
+    const space = spaces().find((item) => item.active) ?? spaces()[0];
+    const tab = space?.tabs?.find((item) => item.active) ?? space?.tabs?.[0];
+    const list = agents().filter((agent) => agent.space === space?.id && agent.tab === tab?.id);
+    const lead = list.find((agent) => agent.focused) ?? list[0];
+    const pane = panes().find((item) => item.pane === lead?.pane);
+    const isKiro = lead?.app === "kiro" || lead?.program?.key === "kiro";
+    const key = isKiro ? JSON.stringify([lead.address, pane?.cwd, lead.title?.replace(/^[^\p{L}\p{N}]+/u, "")]) : null;
+    if (key !== this.kiroKey) { this.kiroKey = key; this.kiro = null; cx.notify(); }
+    if (!key || this.kiroLoading) return;
+    if (space?.machine) { this.kiro = { error: "Kiro data is available on local terminals" }; cx.notify(); return; }
+    this.kiroLoading = true;
+    try {
+      const result = await exec("node", [appHome() + "/mods/claude-status/kiro-status.cjs", pane?.cwd ?? "", lead.title ?? ""], { timeout: 5000 });
+      if (key === this.kiroKey) this.kiro = JSON.parse(result.stdout);
+    } catch { if (key === this.kiroKey) this.kiro = { error: "Kiro session data unavailable" }; }
+    finally { this.kiroLoading = false; cx.notify(); }
   }
 
   async refreshGit(cx) {
@@ -252,19 +276,27 @@ export default class ClaudeStatus extends View {
     const pane = panes().find(p => p.pane === lead?.pane) ?? panes().find(p => p.tab === tab?.id && p.focused);
     const key = lead?.app === 'codex' ? JSON.stringify([lead.address, pane?.cwd, lead.title?.replace(/^[^\p{L}\p{N}]+/u, '')]) : null;
     const codex = key && key === this.codexKey ? this.codex : null;
+    const isKiro = lead?.app === 'kiro' || lead?.program?.key === 'kiro';
+    const kiroKey = isKiro ? JSON.stringify([lead.address, pane?.cwd, lead.title?.replace(/^[^\p{L}\p{N}]+/u, '')]) : null;
+    const kiro = kiroKey && kiroKey === this.kiroKey ? this.kiro : null;
+    const credits = kiro?.credits ?? null;
     const isKimi = lead?.app === 'kimi-code';
     const isCodex = lead?.app === 'codex';
-    const context = codex?.context ?? (isKimi ? this.usage : null);
+    const context = codex?.context ?? kiro?.context ?? (isKimi ? this.usage : null);
     const weekly = codex?.weekly?.left ?? (isKimi && this.limits?.weekly ? 100-this.limits.weekly.percent : null);
     const fiveHour = codex?.fiveHour?.left ?? (isKimi && this.limits?.fiveHour ? 100-this.limits.fiveHour.percent : null);
     const working = lead?.status === 'working';
-    const state = statusInfo(lead?.status);
     const toneOf = status => status === 'working' ? c.working : status === 'blocked' ? c.alert : status === 'done' ? c.ok : c.dim;
     const stateColor = lead ? toneOf(lead.status) : c.dim;
+    const known = lead && STATUS[lead.status] && lead.status !== 'unknown';
+    const stateLabel = known ? statusInfo(lead.status).label : STATUS.idle.label;
     const cwd = codex?.cwd ?? pane?.cwd ?? space?.folder;
-    const title = codex?.title ?? taskTitle(lead, tab, space);
-    const model = codex?.model?.replace(/^gpt/i, 'GPT').replace(/astra/i, 'Astra') ?? lead?.program?.name ?? 'No active session';
-    const elapsed = tab?.working_since ? formatDuration(Date.now()-tab.working_since) : '—';
+    const title = codex?.title ?? kiro?.title ?? taskTitle(lead, tab, space);
+    const programName = lead?.program?.name ?? 'Status';
+    const rawModel = codex?.model?.replace(/^gpt/i, 'GPT').replace(/astra/i, 'Astra') ?? kiro?.model ?? null;
+    // Hide the model when it only repeats the program name shown in the header.
+    const model = rawModel && rawModel.toLowerCase() !== programName.toLowerCase() ? rawModel : null;
+    const elapsed = working && tab?.working_since ? formatDuration(Date.now()-tab.working_since) : null;
     const branch = this.git?.branch ?? pane?.branch;
     const pickerOpen = kind => this.picker?.kind === kind && this.picker?.address === lead?.address;
     setAgentOrder(list.map(a => a.address));
@@ -272,51 +304,56 @@ export default class ClaudeStatus extends View {
     const text = (value, size=10, color=c.muted) => div().text_size(size).text_color(color).child(String(value));
     const dot = (color, pulse=false, size=5) => div().size(size).flex_none().rounded_full().bg(color)
       .when(pulse, el => el.loop('opacity', { from: 0.35, to: 1, period: 1600 }));
-    const label = (value, color=c.dim) => text(value, 9, color).font_medium();
-    const section = (name, right=null) => v_flex().w_full().gap(6).pt(10).border_t(1).border_color(c.line)
-      .child(h_flex().w_full().items_center().justify_between()
-        .child(label(name))
-        .when(Boolean(right), el => el.child(right)));
-    const row = (name, value, color=c.muted) => h_flex().w_full().items_center().justify_between().gap(10)
-      .child(text(name,10,c.dim).flex_none()).child(text(value,10,color).min_w(0).truncate());
+    const hairline = () => v_flex().w_full().gap(10).pt(12).border_t(1).border_color(c.line);
     const clamp = value => Math.max(0, Math.min(100, Number(value) || 0));
-    // A thin track whose fill width is the real percentage; null renders as an empty track.
-    const meter = (name, value, suffix, low) => v_flex().w_full().gap(5)
+    const meter = (name, value, suffix, low) => v_flex().w_full().gap(6)
       .child(h_flex().w_full().items_end().justify_between()
         .child(text(name,10,c.muted))
         .child(h_flex().items_end().gap(4)
-          .child(text(value == null ? '—' : `${Math.round(value)}%`,11,value == null ? c.dim : c.text).font_medium())
-          .when(value != null, el => el.child(text(suffix,8,c.dim)))))
-      .child(div().w_full().h(3).rounded_full().bg(c.track).overflow_hidden()
-        .when(value != null, el => el.child(div().h_full().rounded_full()
-          .w(`${clamp(value)}%`).bg(low ? c.warn : c.accent))));
-    // Only interactive pickers get a frame; a plain model name must not look clickable.
-    const chip = (id, open, framed=true) => h_flex().id(id).min_w(0).items_center().gap(5).py(4)
-      .when(framed, el => el.px(7).rounded(5).border(1).border_color(c.line).bg(open ? c.selected : c.inset));
-    const icon = programIcon(lead?.program, 12, c.muted);
-    const sync = this.git?.ahead || this.git?.behind ? `  ↑${this.git.ahead} ↓${this.git.behind}` : '';
+          .child(text(`${Math.round(value)}%`,11,c.text).font_medium())
+          .child(text(suffix,9,c.dim))))
+      .child(div().w_full().h(2).rounded_full().bg(c.track).overflow_hidden()
+        .child(div().h_full().rounded_full().w(`${clamp(value)}%`).bg(low ? c.warn : c.accent)));
+    // Only interactive pickers get a frame.
+    const chip = (id, open) => h_flex().id(id).min_w(0).items_center().gap(5).py(4)
+      .px(7).rounded(5).border(1).border_color(c.line).bg(open ? c.selected : c.inset);
+    const icon = programIcon(lead?.program, 14, c.muted);
     const options = this.picker?.kind === 'model'
       ? (codex?.models ?? []).map(m=>({value:m.id,label:m.name,selected:m.id===codex?.model}))
       : (codex?.models?.find(m=>m.id===codex?.model)?.efforts ?? []).map(e=>({value:e,label:e,selected:e===codex?.effort}));
 
+    const hasContext = context?.percent != null;
+    const hasWeekly = weekly != null;
+    const meta = [
+      fiveHour != null ? `5h ${Math.round(fiveHour)}% left` : null,
+      codex?.weekly?.resetsAt ? `resets ${new Date(codex.weekly.resetsAt*1000).toLocaleDateString('en-US',{month:'short',day:'numeric'})}` : null,
+      credits != null ? `credits ${Number(Number(credits).toFixed(2))}` : null,
+    ].filter(Boolean);
+    const usageError = !hasContext && !hasWeekly && !meta.length ? (codex?.error ?? kiro?.error ?? null) : null;
+    const showUsage = hasContext || hasWeekly || meta.length > 0 || Boolean(usageError) || isKimi;
+    const showChips = isCodex || Boolean(model);
+
+    const sync = this.git?.ahead || this.git?.behind ? `↑${this.git.ahead} ↓${this.git.behind}` : null;
+    const footer = [space?.machine, branch ? `⑂ ${branch}` : null].filter(Boolean).join(' · ');
+    const tail = [this.git?.changed ? `${this.git.changed} changed` : null, sync].filter(Boolean);
+
     return v_flex().id('claude-status-root').size_full().bg(c.bg).border(1).border_color(c.line)
-      .rounded(6).p(12).gap(12).font_family('Geist Mono').overflow_hidden()
+      .rounded(6).p(12).gap(14).font_family('Geist Mono').overflow_hidden()
       .child(h_flex().w_full().items_center().justify_between()
         .child(h_flex().min_w(0).gap(7).items_center()
-          .child(icon ?? dot(stateColor, working))
-          .child(text(lead?.program?.name ?? 'Status',10,c.text).font_medium().truncate()))
+          .when(Boolean(icon), el => el.child(icon))
+          .child(text(programName,11,c.text).font_medium().truncate()))
         .child(div().id('status-close').size(20).flex_none().flex().items_center().justify_center().rounded(5)
           .cursor_pointer().text_color(c.dim).hover(s=>s.bg(c.hover).text_color(c.text)).tooltip('Hide status panel')
           .on_click(()=>run('layout.hide',{id:'agent-status'}))
           .child(svg('mods/workspace-chrome/panel-right.svg').size(12))))
-      .child(h_flex().id('session-signal-banner').w_full().h(36).flex_none()
+      .child(h_flex().id('session-signal-banner').w_full().h(34).flex_none()
         .px(10).rounded(6).bg(c.inset).border(1).border_color(c.line)
         .items_center().justify_between().gap(10)
         .child(h_flex().min_w(0).items_center().gap(8)
           .child(dot(stateColor, working, 6))
-          .child(v_flex().min_w(0).gap(2)
-            .child(text(working ? 'Working' : lead?.status === 'blocked' ? 'Needs input' : lead?.status === 'done' ? 'Finished' : 'Ready',10,working || lead?.status === 'blocked' || lead?.status === 'done' ? stateColor : c.text).font_medium())
-            .child(text(working ? `Turn ${elapsed}` : 'Standing by',8,c.dim).truncate())))
+          .child(text(stateLabel,10,known && lead.status !== 'idle' ? stateColor : c.muted).font_medium().flex_none())
+          .when(Boolean(elapsed), el => el.child(text(elapsed,9,c.dim).truncate())))
         .child(h_flex().h(16).flex_none().items_end().gap(2)
           .tooltip('会话活动指示')
           .children([7,12,16,10,14,8,11].map((height,i)=>
@@ -324,20 +361,23 @@ export default class ClaudeStatus extends View {
               .bg(working ? c.working : c.dim)
               .when(working,el=>el.loop('height',{from:3+(i%3),to:height,period:880+i*137})
                 .loop('opacity',{from:0.4,to:1,period:1150+i*93}))))))
-      .child(section('Session', h_flex().items_center().gap(5).px(6).py(2).rounded_full()
-          .border(1).border_color(c.line).child(dot(stateColor,false,4)).child(text(state.label,8,c.muted)))
+      .child(v_flex().w_full().gap(6)
         .child(div().w_full().text_size(13).font_semibold().truncate().text_color(c.text).child(title))
-        .child(text(folder(cwd,home()) || '—',9,c.muted).w_full().truncate().tooltip(cwd ?? ''))
-        .child(h_flex().w_full().pt(4).items_center().gap(6)
-          .child(chip('codex-model-picker', pickerOpen('model'), isCodex)
-            .when(isCodex, el => el.cursor_pointer().hover(s=>s.bg(c.hover))
-              .tooltip('选择当前会话的模型').on_click((_e,cx)=>this.togglePicker('model',lead.address,cx)))
-            .child(text(model,10,c.text).truncate())
-            .when(isCodex, el=>el.child(text('⌄',10,c.dim))))
-          .when(Boolean(codex?.effort),el=>el.child(chip('codex-effort-picker', pickerOpen('effort')).flex_none()
-            .cursor_pointer().hover(s=>s.bg(c.hover)).tooltip('选择推理强度')
-            .on_click((_e,cx)=>this.togglePicker('effort',lead.address,cx))
-            .child(text(codex.effort,10,c.text)).child(text('⌄',10,c.dim)))))
+        .when(Boolean(cwd), el => el.child(text(folder(cwd,home()),10,c.dim).w_full().truncate().tooltip(cwd ?? '')))
+        .when(showChips, el => el.child(isCodex
+          ? h_flex().w_full().pt(4).items_center().gap(6)
+            .child(chip('codex-model-picker', pickerOpen('model'))
+              .cursor_pointer().hover(s=>s.bg(c.hover))
+              .tooltip('选择当前会话的模型').on_click((_e,cx)=>this.togglePicker('model',lead.address,cx))
+              .child(text(rawModel ?? programName,10,c.text).truncate())
+              .child(text('⌄',10,c.dim)))
+            .when(Boolean(codex?.effort),el=>el.child(chip('codex-effort-picker', pickerOpen('effort')).flex_none()
+              .cursor_pointer().hover(s=>s.bg(c.hover)).tooltip('选择推理强度')
+              .on_click((_e,cx)=>this.togglePicker('effort',lead.address,cx))
+              .child(text(codex.effort,10,c.text)).child(text('⌄',10,c.dim))))
+          : h_flex().w_full().items_center().gap(8)
+            .child(text(model,10,c.muted).min_w(0).truncate())
+            .when(Boolean(kiro?.effort), el => el.child(text(kiro.effort,10,c.dim).flex_none()))))
         .when(this.picker?.address === lead?.address && Boolean(this.picker), el=>el.child(
           v_flex().id('codex-options').w_full().max_h(210).overflow_y_scrollbar().gap(1)
             .p(4).rounded(6).bg(c.inset).border(1).border_color(c.line)
@@ -350,28 +390,27 @@ export default class ClaudeStatus extends View {
                 .child(text(option.selected?'✓':'',10,c.accent))))
             .when(!codex?.models?.length, el=>el.child(text('模型目录尚未就绪',10,c.dim).px(6).py(4)))
         )))
-      .child(section('Usage')
-        .child(v_flex().w_full().gap(9)
-          .child(meter('Context',context?.percent ?? null,'used',(context?.percent ?? 0) >= 80))
-          .child(meter('Weekly',weekly,'left',weekly != null && weekly <= 20)))
-        .when(fiveHour !== null, el=>el.child(row('5-hour left',`${fiveHour}%`,fiveHour <= 20 ? c.warn : c.muted)))
-        .when(Boolean(codex?.weekly?.resetsAt), el=>el.child(row('Weekly reset',new Date(codex.weekly.resetsAt*1000).toLocaleDateString('en-US',{month:'short',day:'numeric'}))))
-        .when(Boolean(codex?.error),el=>el.child(text(codex.error,8,c.dim)))
-        .when(isKimi,el=>el.child(text(this.limitsLoading ? 'Refreshing…' : '↻ Refresh limits',9,c.muted)
-          .id('refresh-kimi-limits').cursor_pointer().hover(s=>s.text_color(c.text)).on_click((_e,cx)=>this.refreshLimits(cx)))))
-      .child(section('Workspace')
-        .child(h_flex().w_full().items_center().justify_between().gap(10)
-          .child(text(branch ? `⑂ ${branch}` : 'No branch',10,branch ? c.muted : c.dim).min_w(0).truncate())
-          .child(text((this.git ? (this.git.changed ? `${this.git.changed} changed` : 'Clean') : branch ? '' : 'No repository') + sync,9,this.git?.changed ? c.warn : c.dim).flex_none())))
-      .child(section('Agents', text(String(list.length),9,c.dim))
+      .when(showUsage, el => el.child(hairline()
+        .when(hasContext, el => el.child(meter('Context',context.percent,'used',context.percent >= 80)))
+        .when(hasWeekly, el => el.child(meter('Weekly',weekly,'left',weekly <= 20)))
+        .when(meta.length > 0, el => el.child(text(meta.join(' · '),9,c.dim).truncate()))
+        .when(Boolean(usageError), el => el.child(text(usageError,9,c.dim).truncate()))
+        .when(isKimi, el => el.child(text(this.limitsLoading ? 'Refreshing…' : '↻ Refresh limits',9,c.dim)
+          .id('refresh-kimi-limits').cursor_pointer().hover(s=>s.text_color(c.text)).on_click((_e,cx)=>this.refreshLimits(cx))))))
+      .when(list.length > 1, el => el.child(hairline().gap(6)
+        .child(h_flex().w_full().items_center().justify_between()
+          .child(text('Agents',9,c.dim))
+          .child(text(String(list.length),9,c.dim)))
         .child(v_flex().id('status-agent-list').w_full().gap(1).max_h(90).overflow_y_scrollbar()
           .children(list.map(agent=>h_flex().id(`status-agent-${agent.address}`).w_full().items_center().gap(8)
             .px(7).py(5).rounded(5).when(agent.focused, el=>el.bg(c.selected)).cursor_pointer()
             .hover(s=>s.bg(c.hover)).on_click(()=>run('pane.focus',{pane:agent.pane}))
             .child(dot(toneOf(agent.status),agent.status==='working'))
             .child(text(agent.program?.name ?? 'Agent',10,agent.focused ? c.text : c.muted).flex_1().min_w(0).truncate())
-            .child(text(statusInfo(agent.status).label.toLowerCase(),9,c.dim).flex_none())))))
+            .child(text(statusInfo(agent.status).label.toLowerCase(),9,c.dim).flex_none()))))))
       .child(div().flex_1())
-      .child(text(space?.machine ?? 'local',8,c.dim).truncate());
+      .when(Boolean(footer), el => el.child(h_flex().w_full().min_w(0).items_center().gap(6)
+        .child(text(footer,9,c.dim).min_w(0).truncate())
+        .when(tail.length > 0, el => el.child(text('· ' + tail.join(' · '),9,this.git?.changed ? c.warn : c.dim).flex_none()))));
   }
 }
