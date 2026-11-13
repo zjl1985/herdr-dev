@@ -89,6 +89,10 @@ export default class ClaudeStatus extends View {
     this.kiroKey = null;
     this.kiroBase = null;
     this.kiroLoading = false;
+    this.agy = null;
+    this.agyKey = null;
+    this.agyBase = null;
+    this.agyLoading = false;
     this.git = null;
     this.gitKey = null;
     this.usage = null;
@@ -105,6 +109,8 @@ export default class ClaudeStatus extends View {
     cx.timer.every(3000, (cx) => cx.spawn((cx) => this.refreshCodex(cx)));
     cx.spawn((cx) => this.refreshKiro(cx));
     cx.timer.every(3000, (cx) => cx.spawn((cx) => this.refreshKiro(cx)));
+    cx.spawn((cx) => this.refreshAgy(cx));
+    cx.timer.every(3000, (cx) => cx.spawn((cx) => this.refreshAgy(cx)));
     cx.timer.after(300, (cx) => {
       if (!this.limits) this.refreshLimits(cx);
     });
@@ -182,6 +188,27 @@ export default class ClaudeStatus extends View {
       if (key === this.kiroKey) this.kiro = JSON.parse(result.stdout);
     } catch { if (key === this.kiroKey) this.kiro = { error: "Kiro session data unavailable" }; }
     finally { this.kiroLoading = false; cx.notify(); }
+  }
+
+  async refreshAgy(cx) {
+    const space = spaces().find((item) => item.active) ?? spaces()[0];
+    const tab = space?.tabs?.find((item) => item.active) ?? space?.tabs?.[0];
+    const list = agents().filter((agent) => agent.space === space?.id && agent.tab === tab?.id);
+    const lead = list.find((agent) => agent.focused) ?? list[0];
+    const pane = panes().find((item) => item.pane === lead?.pane);
+    const isAgy = lead?.app === "antigravity" || lead?.app === "agy" || lead?.program?.key === "antigravity" || lead?.program?.name?.toLowerCase().includes("antigravity");
+    const key = isAgy ? JSON.stringify([lead.address, pane?.cwd, lead.title?.replace(/^[^\p{L}\p{N}]+/u, "")]) : null;
+    const base = isAgy ? JSON.stringify([lead.address, pane?.cwd]) : null;
+    if (base !== this.agyBase) { this.agyBase = base; this.agy = null; cx.notify(); }
+    if (key !== this.agyKey) this.agyKey = key;
+    if (!key || this.agyLoading) return;
+    if (space?.machine) { this.agy = { error: "Antigravity data is available on local terminals" }; cx.notify(); return; }
+    this.agyLoading = true;
+    try {
+      const result = await exec("node", [appHome() + "/mods/claude-status/agy-status.cjs", pane?.cwd ?? "", lead.title ?? ""], { timeout: 5000 });
+      if (key === this.agyKey) this.agy = JSON.parse(result.stdout);
+    } catch { if (key === this.agyKey) this.agy = { error: "Antigravity session data unavailable" }; }
+    finally { this.agyLoading = false; cx.notify(); }
   }
 
   async refreshGit(cx) {
@@ -283,21 +310,26 @@ export default class ClaudeStatus extends View {
     const isKiro = lead?.app === 'kiro' || lead?.program?.key === 'kiro';
     const kiroBase = isKiro ? JSON.stringify([lead.address, pane?.cwd]) : null;
     const kiro = kiroBase && kiroBase === this.kiroBase ? this.kiro : null;
+    const isAgy = lead?.app === 'antigravity' || lead?.app === 'agy' || lead?.program?.key === 'antigravity' || lead?.program?.name?.toLowerCase().includes('antigravity');
+    const agyBase = isAgy ? JSON.stringify([lead.address, pane?.cwd]) : null;
+    const agy = agyBase && agyBase === this.agyBase ? this.agy : null;
     const credits = kiro?.credits ?? null;
     const isKimi = lead?.app === 'kimi-code';
     const isCodex = lead?.app === 'codex';
-    const context = codex?.context ?? kiro?.context ?? (isKimi ? this.usage : null);
-    const weekly = codex?.weekly?.left ?? (isKimi && this.limits?.weekly ? 100-this.limits.weekly.percent : null);
-    const fiveHour = codex?.fiveHour?.left ?? (isKimi && this.limits?.fiveHour ? 100-this.limits.fiveHour.percent : null);
+    const context = codex?.context ?? kiro?.context ?? agy?.context ?? (isKimi ? this.usage : null);
+    const weekly = codex?.weekly?.left ?? agy?.weekly?.left ?? (isKimi && this.limits?.weekly ? 100-this.limits.weekly.percent : null);
+    const fiveHour = codex?.fiveHour?.left ?? agy?.fiveHour?.left ?? (isKimi && this.limits?.fiveHour ? 100-this.limits.fiveHour.percent : null);
+    const weeklyReset = codex?.weekly?.resetsAt ?? agy?.weekly?.resetsAt ?? null;
     const working = lead?.status === 'working';
     const toneOf = status => status === 'working' ? c.working : status === 'blocked' ? c.alert : status === 'done' ? c.ok : c.dim;
     const stateColor = lead ? toneOf(lead.status) : c.dim;
     const known = lead && STATUS[lead.status] && lead.status !== 'unknown';
     const stateLabel = known ? statusInfo(lead.status).label : STATUS.idle.label;
-    const cwd = codex?.cwd ?? pane?.cwd ?? space?.folder;
-    const title = codex?.title ?? kiro?.title ?? taskTitle(lead, tab, space);
-    const programName = lead?.program?.name ?? 'Status';
-    const rawModel = codex?.model?.replace(/^gpt/i, 'GPT').replace(/astra/i, 'Astra') ?? kiro?.model ?? null;
+    const cwd = codex?.cwd ?? kiro?.cwd ?? agy?.cwd ?? pane?.cwd ?? space?.folder;
+    const title = codex?.title ?? kiro?.title ?? agy?.title ?? taskTitle(lead, tab, space);
+    const programName = lead?.program?.name ?? (isAgy ? 'Antigravity' : 'Status');
+    const rawModel = codex?.model?.replace(/^gpt/i, 'GPT').replace(/astra/i, 'Astra') ?? kiro?.model ?? agy?.model ?? null;
+    const effort = codex?.effort ?? agy?.effort ?? null;
     // Hide the model when it only repeats the program name shown in the header.
     const model = rawModel && rawModel.toLowerCase() !== programName.toLowerCase() ? rawModel : null;
     const elapsed = working && tab?.working_since ? formatDuration(Date.now()-tab.working_since) : null;
@@ -347,7 +379,7 @@ export default class ClaudeStatus extends View {
 
     const hasContext = context?.percent != null;
     const hasWeekly = weekly != null;
-    const hasUsageData = hasContext || hasWeekly || fiveHour != null || credits != null || Boolean(codex?.weekly?.resetsAt);
+    const hasUsageData = hasContext || hasWeekly || fiveHour != null || credits != null || weeklyReset != null;
 
     return v_flex().id('claude-status-root').size_full().bg(c.bg).border(1).border_color(c.line)
       .rounded(6).p(12).gap(12).font_family('Geist Mono').overflow_hidden()
@@ -384,10 +416,10 @@ export default class ClaudeStatus extends View {
               .tooltip('选择当前会话的模型').on_click((_e,cx)=>this.togglePicker('model',lead.address,cx)))
             .child(text(rawModel ?? programName,10,c.text).truncate())
             .when(isCodex, el=>el.child(text('⌄',10,c.dim))))
-          .when(Boolean(codex?.effort),el=>el.child(chip('codex-effort-picker', pickerOpen('effort')).flex_none()
-            .cursor_pointer().hover(s=>s.bg(c.hover)).tooltip('选择推理强度')
-            .on_click((_e,cx)=>this.togglePicker('effort',lead.address,cx))
-            .child(text(codex.effort,10,c.text)).child(text('⌄',10,c.dim)))))
+          .when(Boolean(effort),el=>el.child(chip(isCodex ? 'codex-effort-picker' : 'session-effort', isCodex && pickerOpen('effort')).flex_none()
+            .when(isCodex, el => el.cursor_pointer().hover(s=>s.bg(c.hover)).tooltip('选择推理强度').on_click((_e,cx)=>this.togglePicker('effort',lead.address,cx)))
+            .child(text(effort,10,c.text))
+            .when(isCodex, el=>el.child(text('⌄',10,c.dim))))))
         .when(this.picker?.address === lead?.address && Boolean(this.picker), el=>el.child(
           v_flex().id('codex-options').w_full().max_h(210).overflow_y_scrollbar().gap(1)
             .p(4).rounded(6).bg(c.inset).border(1).border_color(c.line)
@@ -406,9 +438,9 @@ export default class ClaudeStatus extends View {
           .when(hasWeekly, el => el.child(metric('WEEKLY', weekly, 'left', (weekly <= 20 ? c.warn : c.accent), weekly)))
           .when(credits != null, el => el.child(creditMetric(credits)))
           .when(fiveHour != null, el => el.child(row('5-hour left', `${Math.round(fiveHour)}%`, fiveHour <= 20 ? c.warn : c.muted)))
-          .when(Boolean(codex?.weekly?.resetsAt), el => el.child(row('Weekly reset', new Date(codex.weekly.resetsAt*1000).toLocaleDateString('en-US',{month:'short',day:'numeric'}))))
-          .when(Boolean(codex?.error), el => el.child(text(codex.error,8,c.dim)))
-          .when(!hasUsageData && !codex?.error, el => el.child(text('—',10,c.dim)))
+          .when(weeklyReset != null, el => el.child(row('Weekly reset', new Date(weeklyReset * 1000).toLocaleDateString('en-US',{month:'short',day:'numeric'}))))
+          .when(Boolean(codex?.error ?? agy?.error), el => el.child(text((codex?.error ?? agy?.error),8,c.dim)))
+          .when(!hasUsageData && !(codex?.error ?? agy?.error), el => el.child(text('—',10,c.dim)))
           .when(isKimi, el => el.child(text(this.limitsLoading ? 'Refreshing…' : '↻ Refresh limits',9,c.muted)
             .id('refresh-kimi-limits').cursor_pointer().hover(s=>s.text_color(c.text)).on_click((_e,cx)=>this.refreshLimits(cx))))))
       .child(section('Workspace')
