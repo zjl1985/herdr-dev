@@ -9,106 +9,131 @@
     13
   ],
   "background": "canvas",
-  "ui_font": "Monaspace Krypton",
+  "ui_font": "Rajdhani",
   "terminal_padding": [
-    12,
-    14
+    6,
+    8
   ],
   "children": [
     {
       "id": "command-body",
       "type": "row",
       "padding": [
-        0,
-        12
+        4,
+        4
       ],
-      "gap": 12,
+      "gap": 6,
       "children": [
         {
           "id": "sidebar",
           "type": "block",
           "size": {
-            "px": 152
+            "px": 160
           },
+          "min": 148,
+          "max": 200,
           "content": {
             "mod": "gmunk-shell",
             "props": {
               "role": "nav"
             }
-          },
-          "min": 130,
-          "max": 210,
-          "hidden": true
+          }
         },
         {
           "id": "drawer-gutter",
           "type": "column",
           "size": {
-            "px": 40
+            "px": 16
           },
           "resizable": false,
+          "hidden": true,
           "children": []
         },
         {
-          "id": "work",
-          "type": "column",
+          "id": "stage",
+          "type": "row",
+          "gap": 0,
           "children": [
             {
-              "id": "tabs",
+              "id": "bezel-left",
               "type": "block",
               "size": {
-                "px": 32
+                "px": 8
               },
+              "resizable": false,
               "content": {
                 "mod": "gmunk-shell",
                 "props": {
-                  "role": "tabs"
-                }
-              },
-              "window_drag": true
-            },
-            {
-              "id": "main",
-              "type": "block",
-              "content": {
-                "tab": "active",
-                "pane": {
-                  "gap": 8,
-                  "radius": 0,
-                  "background": "background",
-                  "lone": true,
-                  "border": {
-                    "width": 1,
-                    "color": "border"
-                  },
-                  "focus": {
-                    "width": 1,
-                    "color": "input"
-                  },
-                  "header": {
-                    "content": {
-                      "mod": "gmunk-shell",
-                      "props": {
-                        "role": "pane"
-                      }
-                    },
-                    "height": 27,
-                    "position": "top",
-                    "reveal": "always"
-                  }
+                  "role": "bezel",
+                  "side": "left"
                 }
               }
             },
             {
-              "id": "diagnostic-rail",
+              "id": "work",
+              "type": "column",
+              "gap": 0,
+              "children": [
+                {
+                  "id": "tabs",
+                  "type": "block",
+                  "size": {
+                    "px": 30
+                  },
+                  "content": {
+                    "mod": "gmunk-shell",
+                    "props": {
+                      "role": "tabs"
+                    }
+                  },
+                  "window_drag": true
+                },
+                {
+                  "id": "main",
+                  "type": "block",
+                  "content": {
+                    "tab": "active",
+                    "pane": {
+                      "gap": 4,
+                      "radius": 0,
+                      "background": "background",
+                      "lone": true,
+                      "border": {
+                        "width": 1,
+                        "color": "border"
+                      },
+                      "focus": {
+                        "width": 1,
+                        "color": "accent"
+                      },
+                      "header": {
+                        "content": {
+                          "mod": "gmunk-shell",
+                          "props": {
+                            "role": "pane"
+                          }
+                        },
+                        "height": 24,
+                        "position": "top",
+                        "reveal": "always"
+                      }
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "id": "bezel-right",
               "type": "block",
               "size": {
-                "px": 55
+                "px": 8
               },
+              "resizable": false,
               "content": {
                 "mod": "gmunk-shell",
                 "props": {
-                  "role": "diagnostics"
+                  "role": "bezel",
+                  "side": "right"
                 }
               }
             }
@@ -149,13 +174,13 @@
           "id": "gmunk-instruments",
           "type": "block",
           "size": {
-            "px": 324
+            "px": 240
           },
+          "min": 220,
+          "max": 320,
           "content": {
             "mod": "gmunk-telemetry"
-          },
-          "min": 292,
-          "max": 390
+          }
         }
       ],
       "floating": [
@@ -168,8 +193,8 @@
             }
           },
           "edge": "left",
-          "align": "center",
-          "peek": 36
+          "align": "start",
+          "peek": 40
         }
       ]
     },
@@ -177,7 +202,7 @@
       "id": "system-strip",
       "type": "block",
       "size": {
-        "px": 28
+        "px": 26
       },
       "content": {
         "mod": "gmunk-shell",

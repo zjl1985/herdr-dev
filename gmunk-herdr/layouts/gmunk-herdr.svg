@@ -1,10 +1,61 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 400">
+<defs>
+  <pattern id="dots" width="8" height="8" patternUnits="userSpaceOnUse">
+    <rect width="1" height="1" fill="#243b40"/>
+  </pattern>
+</defs>
 <rect width="640" height="400" fill="#070b0d"/>
-<g fill="none" stroke="#243b40" stroke-width="1"><path d="M12 32H628M12 378H628M110 32V366M462 32V366"/><rect x="120" y="56" width="330" height="310"/><rect x="474" y="32" width="154" height="334"/></g>
-<g font-family="monospace" font-size="7" fill="#88a5a8"><text x="14" y="21">HERDR / MISSION CONTROL</text><text x="520" y="21">GM / 01</text><text x="18" y="47">SECTOR INDEX</text><text x="18" y="79">01 / herdr-dev</text><text x="18" y="114">AGENT NETWORK</text><text x="18" y="136">Codex</text><text x="130" y="47">TERMINAL / 01</text><text x="484" y="48">SESSION TELEMETRY</text><text x="484" y="69">PROCESSING</text><text x="484" y="91">herdr-dev</text><text x="484" y="218">RESOURCE MATRIX</text><text x="484" y="307">CONTEXT TRACE</text><text x="484" y="351">RUNTIME / LINK</text><text x="14" y="391">LINK / LOCAL</text></g>
-<g stroke="#8ec9ce" fill="none" stroke-width=".6"><circle cx="551" cy="151" r="42"/><ellipse cx="551" cy="151" rx="22" ry="42"/><ellipse cx="551" cy="151" rx="9" ry="42"/><ellipse cx="551" cy="151" rx="42" ry="12"/><ellipse cx="551" cy="151" rx="42" ry="28"/><path d="M551 98l53 53-53 53-53-53Z M482 151h137 M551 98v106 M484 333h17v-4h22v2h25v-6h27v-3h43"/></g>
-<g fill="#8ec9ce"><rect x="484" y="262" width="55" height="28"/><rect x="564" y="238" width="55" height="52"/></g>
-<g stroke="#070b0d" stroke-width="2"><path d="M480 242h142m-142 5h142m-142 5h142m-142 5h142m-142 5h142m-142 5h142m-142 5h142m-142 5h142m-142 5h142m-142 5h142"/></g>
-<g fill="#e07750"><rect x="14" y="60" width="2" height="30"/><rect x="130" y="81" width="5" height="6"/><path d="M551 146l5 5-5 5-5-5Z"/></g>
-<g fill="#567378"><rect x="142" y="82" width="118" height="3"/><rect x="130" y="99" width="205" height="3"/><rect x="130" y="112" width="177" height="3"/><rect x="130" y="125" width="230" height="3"/><rect x="130" y="151" width="160" height="3"/></g>
+<rect x="8" y="16" width="176" height="360" fill="url(#dots)"/>
+<rect x="456" y="16" width="176" height="360" fill="url(#dots)"/>
+<g fill="none" stroke="#3b6168" stroke-width=".8">
+  <path d="M12 28v-8h16M172 20h16v8M12 368v8h16M172 376h-16v-8"/>
+  <path d="M464 28v-8h16M620 20h8v8M464 368v8h16M628 376h-8v-8"/>
+  <rect x="200" y="36" width="248" height="268"/>
+</g>
+<g fill="none" stroke="#d1c397" stroke-width=".6">
+  <path d="M188 24v352M452 24v352"/>
+  <path d="M180 32v8h8M180 80v8h8M180 128v8h8M180 176v8h8M180 224v8h8M180 272v8h8M180 320v8h8M180 360h8"/>
+  <path d="M452 32v8h8M452 80v8h8M452 128v8h8M452 176v8h8M452 224v8h8M452 272v8h8M452 320v8h8M452 360h8"/>
+</g>
+<g font-family="Rajdhani, sans-serif" font-size="7" fill="#8ec9ce">
+  <text x="20" y="36">O N L I N E</text>
+  <text x="20" y="74">S E C T O R   I N D E X</text>
+  <text x="20" y="150">A G E N T   N E T W O R K</text>
+  <text x="20" y="230">L I N K   T O P O L O G Y</text>
+  <text x="204" y="30">W O R K S P A C E</text>
+  <text x="470" y="36">T E L E M E T R Y</text>
+  <text x="470" y="176">R E S O U R C E   M A T R I X</text>
+  <text x="470" y="260">C O N T E X T   T R A C E</text>
+  <text x="470" y="316">L I N K / R U N T I M E</text>
+  <text x="14" y="394">LINK / LOCAL</text>
+  <text x="200" y="330">P R O C E S S   M A T R I X</text>
+</g>
+<g font-family="monospace" font-size="9" fill="#cedcda">
+  <text x="20" y="50">00:00:00</text>
+  <text x="20" y="96">S / 01  gmunk-herdr</text>
+  <text x="204" y="52" fill="#88a5a8">01  terminal</text>
+  <text x="600" y="50" fill="#e07750" text-anchor="end">00</text>
+</g>
+<g stroke="#8ec9ce" fill="none" stroke-width=".6">
+  <path d="M470 80h150v70H470Z"/>
+  <path d="M490 112c20-16 40-16 60 0s40 16 60 0"/>
+  <path d="M490 124c20 16 40 16 60 0s40-16 60 0"/>
+  <circle cx="500" cy="350" r="20"/>
+  <circle cx="500" cy="350" r="11"/>
+</g>
+<g fill="#8ec9ce">
+  <rect x="470" y="200" width="60" height="32"/>
+  <rect x="548" y="190" width="60" height="42"/>
+</g>
+<g stroke="#070b0d" stroke-width="2">
+  <path d="M468 188h154m-154 5h154m-154 5h154m-154 5h154m-154 5h154m-154 5h154m-154 5h154m-154 5h154"/>
+</g>
+<g fill="#e07750"><rect x="20" y="84" width="2" height="20"/><rect x="204" y="40" width="5" height="6"/></g>
+<g fill="#88a5a8">
+  <rect x="206" y="80" width="140" height="2"/>
+  <rect x="206" y="96" width="200" height="2"/>
+  <rect x="206" y="112" width="170" height="2"/>
+  <rect x="206" y="128" width="210" height="2"/>
+</g>
+<g fill="none" stroke="#3b6168" stroke-width=".6"><path d="M200 314h248"/><path d="M16 378h608"/></g>
 </svg>

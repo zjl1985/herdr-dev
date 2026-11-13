@@ -55,7 +55,10 @@ export default class SessionSource extends View {
     cx.spawn(cx=>this.refreshCodex(cx));
     cx.timer.every(3000,cx=>cx.spawn(cx=>this.refreshCodex(cx)));
     cx.timer.every(5000,cx=>this.refreshGit(cx));
-    cx.timer.every(1000, (cx) => cx.notify());
+    cx.timer.every(1000, (cx) => {
+      const tab = spaces().find((s) => s.active)?.tabs.find((t) => t.active);
+      if (tab?.working_since) cx.notify();
+    });
   }
 
   togglePicker(kind, address, cx) {

@@ -27,7 +27,7 @@ herdr-app do layout.switch --name zero-herdr
 左侧默认收起为窄栏，悬停展开、离开收回；点击 PIN 固定，点击 « 或按 `⌘B` 收起/展开。文件入口在标签栏右侧，设置在抽屉底部。
 
 所有 mod 从 `theme()` 获取颜色。切换主题时矢量和 UI 一同跟随，不在组件中硬编码配色。
-终端字体沿用用户设置；UI 标签与读数统一使用本机安装的 Monaspace Krypton。
+终端字体沿用用户设置；界面标签使用随布局附带的 Rajdhani（更接近 Oblivion HUD 字样），数字读数与等宽信息使用本机的 Monaspace Krypton。
 
 ## 数据与动效
 
