@@ -87,6 +87,7 @@ export default class ClaudeStatus extends View {
     this.codexLoading = false;
     this.kiro = null;
     this.kiroKey = null;
+    this.kiroBase = null;
     this.kiroLoading = false;
     this.git = null;
     this.gitKey = null;
@@ -169,7 +170,10 @@ export default class ClaudeStatus extends View {
     const pane = panes().find((item) => item.pane === lead?.pane);
     const isKiro = lead?.app === "kiro" || lead?.program?.key === "kiro";
     const key = isKiro ? JSON.stringify([lead.address, pane?.cwd, lead.title?.replace(/^[^\p{L}\p{N}]+/u, "")]) : null;
-    if (key !== this.kiroKey) { this.kiroKey = key; this.kiro = null; cx.notify(); }
+    // A title change in the same pane re-reads the session but keeps the last data visible.
+    const base = isKiro ? JSON.stringify([lead.address, pane?.cwd]) : null;
+    if (base !== this.kiroBase) { this.kiroBase = base; this.kiro = null; cx.notify(); }
+    if (key !== this.kiroKey) this.kiroKey = key;
     if (!key || this.kiroLoading) return;
     if (space?.machine) { this.kiro = { error: "Kiro data is available on local terminals" }; cx.notify(); return; }
     this.kiroLoading = true;
@@ -277,8 +281,8 @@ export default class ClaudeStatus extends View {
     const key = lead?.app === 'codex' ? JSON.stringify([lead.address, pane?.cwd, lead.title?.replace(/^[^\p{L}\p{N}]+/u, '')]) : null;
     const codex = key && key === this.codexKey ? this.codex : null;
     const isKiro = lead?.app === 'kiro' || lead?.program?.key === 'kiro';
-    const kiroKey = isKiro ? JSON.stringify([lead.address, pane?.cwd, lead.title?.replace(/^[^\p{L}\p{N}]+/u, '')]) : null;
-    const kiro = kiroKey && kiroKey === this.kiroKey ? this.kiro : null;
+    const kiroBase = isKiro ? JSON.stringify([lead.address, pane?.cwd]) : null;
+    const kiro = kiroBase && kiroBase === this.kiroBase ? this.kiro : null;
     const credits = kiro?.credits ?? null;
     const isKimi = lead?.app === 'kimi-code';
     const isCodex = lead?.app === 'codex';
@@ -329,7 +333,7 @@ export default class ClaudeStatus extends View {
       codex?.weekly?.resetsAt ? `resets ${new Date(codex.weekly.resetsAt*1000).toLocaleDateString('en-US',{month:'short',day:'numeric'})}` : null,
       credits != null ? `credits ${Number(Number(credits).toFixed(2))}` : null,
     ].filter(Boolean);
-    const usageError = !hasContext && !hasWeekly && !meta.length ? (codex?.error ?? kiro?.error ?? null) : null;
+    const usageError = !hasContext && !hasWeekly && !meta.length ? (codex?.error ?? null) : null;
     const showUsage = hasContext || hasWeekly || meta.length > 0 || Boolean(usageError) || isKimi;
     const showChips = isCodex || Boolean(model);
 
@@ -376,8 +380,7 @@ export default class ClaudeStatus extends View {
               .on_click((_e,cx)=>this.togglePicker('effort',lead.address,cx))
               .child(text(codex.effort,10,c.text)).child(text('⌄',10,c.dim))))
           : h_flex().w_full().items_center().gap(8)
-            .child(text(model,10,c.muted).min_w(0).truncate())
-            .when(Boolean(kiro?.effort), el => el.child(text(kiro.effort,10,c.dim).flex_none()))))
+            .child(text(model,10,c.muted).min_w(0).truncate())))
         .when(this.picker?.address === lead?.address && Boolean(this.picker), el=>el.child(
           v_flex().id('codex-options').w_full().max_h(210).overflow_y_scrollbar().gap(1)
             .p(4).rounded(6).bg(c.inset).border(1).border_color(c.line)
