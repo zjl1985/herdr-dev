@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 400">
+<rect width="640" height="400" fill="#070b0d"/>
+<g fill="none" stroke="#243b40" stroke-width="1"><path d="M12 32H628M12 378H628M110 32V366M462 32V366"/><rect x="120" y="56" width="330" height="310"/><rect x="474" y="32" width="154" height="334"/></g>
+<g font-family="monospace" font-size="7" fill="#88a5a8"><text x="14" y="21">HERDR / MISSION CONTROL</text><text x="520" y="21">GM / 01</text><text x="18" y="47">SECTOR INDEX</text><text x="18" y="79">01 / herdr-dev</text><text x="18" y="114">AGENT NETWORK</text><text x="18" y="136">Codex</text><text x="130" y="47">TERMINAL / 01</text><text x="484" y="48">SESSION TELEMETRY</text><text x="484" y="69">PROCESSING</text><text x="484" y="91">herdr-dev</text><text x="484" y="218">RESOURCE MATRIX</text><text x="484" y="307">CONTEXT TRACE</text><text x="484" y="351">RUNTIME / LINK</text><text x="14" y="391">LINK / LOCAL</text></g>
+<g stroke="#8ec9ce" fill="none" stroke-width=".6"><circle cx="551" cy="151" r="42"/><ellipse cx="551" cy="151" rx="22" ry="42"/><ellipse cx="551" cy="151" rx="9" ry="42"/><ellipse cx="551" cy="151" rx="42" ry="12"/><ellipse cx="551" cy="151" rx="42" ry="28"/><path d="M551 98l53 53-53 53-53-53Z M482 151h137 M551 98v106 M484 333h17v-4h22v2h25v-6h27v-3h43"/></g>
+<g fill="#8ec9ce"><rect x="484" y="262" width="55" height="28"/><rect x="564" y="238" width="55" height="52"/></g>
+<g stroke="#070b0d" stroke-width="2"><path d="M480 242h142m-142 5h142m-142 5h142m-142 5h142m-142 5h142m-142 5h142m-142 5h142m-142 5h142m-142 5h142m-142 5h142"/></g>
+<g fill="#e07750"><rect x="14" y="60" width="2" height="30"/><rect x="130" y="81" width="5" height="6"/><path d="M551 146l5 5-5 5-5-5Z"/></g>
+<g fill="#567378"><rect x="142" y="82" width="118" height="3"/><rect x="130" y="99" width="205" height="3"/><rect x="130" y="112" width="177" height="3"/><rect x="130" y="125" width="230" height="3"/><rect x="130" y="151" width="160" height="3"/></g>
+</svg>
