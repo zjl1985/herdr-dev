@@ -78,7 +78,16 @@ function taskTitle(agent, tab, space) {
   return space?.name ?? "No active task";
 }
 
-export default class ClaudeStatus extends View {
+function activeAgent() {
+  const space = spaces().find((item) => item.active) ?? spaces()[0];
+  const tab = space?.tabs?.find((item) => item.active) ?? space?.tabs?.[0];
+  const list = agents().filter((agent) => agent.space === space?.id && agent.tab === tab?.id);
+  const lead = list.find((agent) => agent.focused) ?? list[0];
+  const pane = panes().find((item) => item.pane === lead?.pane);
+  return { space, tab, lead, pane };
+}
+
+export default class ZeroHerdr extends View {
   init(_props, cx) {
     this.picker = null;
     this.switching = false;
@@ -97,7 +106,6 @@ export default class ClaudeStatus extends View {
     this.gitKey = null;
     this.usage = null;
     this.usageKey = null;
-    this.limitsLoading = false;
     try {
       this.limits = JSON.parse(localStorage.getItem("kimi.limits") ?? "null");
     } catch {
@@ -111,12 +119,11 @@ export default class ClaudeStatus extends View {
     cx.timer.every(3000, (cx) => cx.spawn((cx) => this.refreshKiro(cx)));
     cx.spawn((cx) => this.refreshAgy(cx));
     cx.timer.every(3000, (cx) => cx.spawn((cx) => this.refreshAgy(cx)));
-    cx.timer.after(300, (cx) => {
-      if (!this.limits) this.refreshLimits(cx);
-    });
     cx.timer.every(5000, (cx) => this.refreshGit(cx));
     cx.timer.every(3000, (cx) => this.refreshUsage(cx));
-    cx.timer.every(1000, (cx) => cx.notify());
+    cx.timer.every(1000, (cx) => {
+      if (activeAgent().lead?.status === "working") cx.notify();
+    });
   }
 
   togglePicker(kind, address, cx) {
@@ -151,29 +158,21 @@ export default class ClaudeStatus extends View {
   }
 
   async refreshCodex(cx) {
-    const space = spaces().find((item) => item.active) ?? spaces()[0];
-    const tab = space?.tabs?.find((item) => item.active) ?? space?.tabs?.[0];
-    const list = agents().filter((agent) => agent.space === space?.id && agent.tab === tab?.id);
-    const lead = list.find((agent) => agent.focused) ?? list[0];
-    const pane = panes().find((item) => item.pane === lead?.pane);
+    const { space, lead, pane } = activeAgent();
     const key = lead?.app === "codex" ? JSON.stringify([lead.address, pane?.cwd, lead.title?.replace(/^[^\p{L}\p{N}]+/u, "")]) : null;
     if (key !== this.codexKey) { this.codexKey = key; this.codex = null; cx.notify(); }
     if (!key || this.codexLoading) return;
     if (space?.machine) { this.codex = { error: "Codex data is available on local terminals" }; cx.notify(); return; }
     this.codexLoading = true;
     try {
-      const result = await exec("node", [appHome() + "/mods/claude-status/codex-status.cjs", pane?.cwd ?? "", lead.title ?? ""], { timeout: 5000 });
+      const result = await exec("node", [appHome() + "/mods/zero-herdr/codex-status.cjs", pane?.cwd ?? "", lead.title ?? ""], { timeout: 5000 });
       if (key === this.codexKey) this.codex = JSON.parse(result.stdout);
     } catch { if (key === this.codexKey) this.codex = { error: "Codex session data unavailable" }; }
     finally { this.codexLoading = false; cx.notify(); }
   }
 
   async refreshKiro(cx) {
-    const space = spaces().find((item) => item.active) ?? spaces()[0];
-    const tab = space?.tabs?.find((item) => item.active) ?? space?.tabs?.[0];
-    const list = agents().filter((agent) => agent.space === space?.id && agent.tab === tab?.id);
-    const lead = list.find((agent) => agent.focused) ?? list[0];
-    const pane = panes().find((item) => item.pane === lead?.pane);
+    const { space, lead, pane } = activeAgent();
     const isKiro = lead?.app === "kiro" || lead?.program?.key === "kiro";
     const key = isKiro ? JSON.stringify([lead.address, pane?.cwd, lead.title?.replace(/^[^\p{L}\p{N}]+/u, "")]) : null;
     // A title change in the same pane re-reads the session but keeps the last data visible.
@@ -184,18 +183,14 @@ export default class ClaudeStatus extends View {
     if (space?.machine) { this.kiro = { error: "Kiro data is available on local terminals" }; cx.notify(); return; }
     this.kiroLoading = true;
     try {
-      const result = await exec("node", [appHome() + "/mods/claude-status/kiro-status.cjs", pane?.cwd ?? "", lead.title ?? ""], { timeout: 5000 });
+      const result = await exec("node", [appHome() + "/mods/zero-herdr/kiro-status.cjs", pane?.cwd ?? "", lead.title ?? "", JSON.stringify(this.kiro?.cache ?? null)], { timeout: 5000 });
       if (key === this.kiroKey) this.kiro = JSON.parse(result.stdout);
     } catch { if (key === this.kiroKey) this.kiro = { error: "Kiro session data unavailable" }; }
     finally { this.kiroLoading = false; cx.notify(); }
   }
 
   async refreshAgy(cx) {
-    const space = spaces().find((item) => item.active) ?? spaces()[0];
-    const tab = space?.tabs?.find((item) => item.active) ?? space?.tabs?.[0];
-    const list = agents().filter((agent) => agent.space === space?.id && agent.tab === tab?.id);
-    const lead = list.find((agent) => agent.focused) ?? list[0];
-    const pane = panes().find((item) => item.pane === lead?.pane);
+    const { space, lead, pane } = activeAgent();
     const isAgy = lead?.app === "antigravity" || lead?.app === "agy" || lead?.program?.key === "antigravity" || lead?.program?.name?.toLowerCase().includes("antigravity");
     const key = isAgy ? JSON.stringify([lead.address, pane?.cwd, lead.title?.replace(/^[^\p{L}\p{N}]+/u, "")]) : null;
     const base = isAgy ? JSON.stringify([lead.address, pane?.cwd]) : null;
@@ -205,16 +200,15 @@ export default class ClaudeStatus extends View {
     if (space?.machine) { this.agy = { error: "Antigravity data is available on local terminals" }; cx.notify(); return; }
     this.agyLoading = true;
     try {
-      const result = await exec("node", [appHome() + "/mods/claude-status/agy-status.cjs", pane?.cwd ?? "", lead.title ?? ""], { timeout: 5000 });
+      const result = await exec("node", [appHome() + "/mods/zero-herdr/agy-status.cjs", pane?.cwd ?? "", lead.title ?? ""], { timeout: 5000 });
       if (key === this.agyKey) this.agy = JSON.parse(result.stdout);
     } catch { if (key === this.agyKey) this.agy = { error: "Antigravity session data unavailable" }; }
     finally { this.agyLoading = false; cx.notify(); }
   }
 
   async refreshGit(cx) {
-    const space = spaces().find((item) => item.active) ?? spaces()[0];
-    const tab = space?.tabs?.find((item) => item.active) ?? space?.tabs?.[0];
-    const cwd = panes().find((pane) => pane.tab === tab?.id && pane.focused)?.cwd ?? space?.folder;
+    const { space, pane } = activeAgent();
+    const cwd = pane?.cwd ?? space?.folder;
     const key = `${space?.machine ?? ""}:${cwd ?? ""}`;
     if (key !== this.gitKey) {
       this.gitKey = key;
@@ -236,11 +230,7 @@ export default class ClaudeStatus extends View {
   }
 
   async refreshUsage(cx) {
-    const space = spaces().find((item) => item.active) ?? spaces()[0];
-    const agentList = agents().filter((agent) => !space || agent.space === space.id);
-    const lead = agentList.find((agent) => agent.status === "blocked")
-      ?? agentList.find((agent) => agent.status === "working")
-      ?? agentList[0];
+    const { lead } = activeAgent();
     const key = lead?.app === "kimi-code" ? lead.address : null;
     if (key !== this.usageKey) {
       this.usageKey = key;
@@ -249,45 +239,17 @@ export default class ClaudeStatus extends View {
     }
     if (!key) return;
     try {
-      const result = await hc(["read", key, "--lines", "12"]);
-      const usage = parseKimiUsage(result.stdout ?? "");
+      const result = await hc(["read", key, "--lines", "45"]);
+      const output = result.stdout ?? "";
+      const usage = parseKimiUsage(output);
+      const limits = parseKimiLimits(output);
       if (key === this.usageKey && usage) this.usage = usage;
+      if (key === this.usageKey && limits) {
+        this.limits = { ...limits, readAt: Date.now() };
+        localStorage.setItem("kimi.limits", JSON.stringify(this.limits));
+      }
     } catch {}
     cx.notify();
-  }
-
-  refreshLimits(cx) {
-    const key = this.usageKey;
-    if (!key || this.limitsLoading) return;
-    this.limitsLoading = true;
-    cx.notify();
-    cx.spawn(async (cx) => {
-      try {
-        await hc(["keys", key, "esc"]);
-        await hc(["send", key, "/usage"]);
-        cx.timer.after(1200, (cx) => {
-          cx.spawn(async (cx) => {
-            try {
-              const result = await hc(["read", key, "--lines", "45"]);
-              const limits = parseKimiLimits(result.stdout ?? "");
-              if (limits && key === this.usageKey) {
-                this.limits = { ...limits, readAt: Date.now() };
-                localStorage.setItem("kimi.limits", JSON.stringify(this.limits));
-              }
-            } catch {} finally {
-              try {
-                await hc(["keys", key, "esc"]);
-              } catch {}
-              this.limitsLoading = false;
-              cx.notify();
-            }
-          });
-        });
-      } catch {
-        this.limitsLoading = false;
-        cx.notify();
-      }
-    });
   }
 
   render() {
@@ -297,14 +259,11 @@ export default class ClaudeStatus extends View {
       hover: t.hover ?? t.border, selected: t.selected ?? t.border,
       line: t.border, track: t.input ?? t.border,
       text: t.foreground, muted: t.muted, dim: t.dim,
-      accent: t.accent, working: t.working ?? t.accent, ok: t.accent,
+      accent: t.accent, working: t.accent, ok: t.accent,
       warn: t.ansi3 ?? t.accent, alert: t.blocked ?? t.accent,
     };
-    const space = spaces().find(s => s.active) ?? spaces()[0];
-    const tab = space?.tabs?.find(t => t.active) ?? space?.tabs?.[0];
+    const { space, tab, lead, pane } = activeAgent();
     const list = agents().filter(a => a.space === space?.id).sort((a,b) => Number(b.focused)-Number(a.focused));
-    const lead = list.find(a => a.focused) ?? list.find(a => a.tab === tab?.id) ?? list[0];
-    const pane = panes().find(p => p.pane === lead?.pane) ?? panes().find(p => p.tab === tab?.id && p.focused);
     const key = lead?.app === 'codex' ? JSON.stringify([lead.address, pane?.cwd, lead.title?.replace(/^[^\p{L}\p{N}]+/u, '')]) : null;
     const codex = key && key === this.codexKey ? this.codex : null;
     const isKiro = lead?.app === 'kiro' || lead?.program?.key === 'kiro';
@@ -382,7 +341,7 @@ export default class ClaudeStatus extends View {
     const has5h = fiveHour != null;
     const hasUsageData = hasContext || hasWeekly || has5h || credits != null || weeklyReset != null;
 
-    return v_flex().id('claude-status-root').size_full().bg(c.bg).border(1).border_color(c.line)
+    return v_flex().id('zero-herdr-root').size_full().bg(c.bg).border(1).border_color(c.line)
       .rounded(6).p(12).gap(12).font_family('Geist Mono').overflow_hidden()
       .child(h_flex().w_full().items_center().justify_between()
         .child(h_flex().min_w(0).gap(7).items_center()
@@ -390,16 +349,16 @@ export default class ClaudeStatus extends View {
           .child(text(programName,10,c.text).font_medium().truncate()))
         .child(div().id('status-close').size(20).flex_none().flex().items_center().justify_center().rounded(5)
           .cursor_pointer().text_color(c.dim).hover(s=>s.bg(c.hover).text_color(c.text)).tooltip('Hide status panel')
-          .on_click(()=>run('layout.hide',{id:'agent-status'}))
+          .on_click(()=>run('layout.hide',{id:'zero-herdr'}))
           .child(svg('mods/workspace-chrome/panel-right.svg').size(12))))
       .child(h_flex().id('session-signal-banner').w_full().h(36).flex_none()
         .px(10).rounded(6).bg(c.inset).border(1).border_color(c.line)
         .items_center().justify_between().gap(10)
         .child(h_flex().min_w(0).items_center().gap(8)
           .child(dot(stateColor, working, 6))
-          .child(v_flex().min_w(0).gap(2)
+          .child(h_flex().min_w(0).items_baseline().gap(7)
             .child(text(stateLabel,10,known && lead.status !== 'idle' ? stateColor : c.text).font_medium())
-            .child(text(working && elapsed ? `Turn ${elapsed}` : 'Standing by',8,c.dim).truncate())))
+            .when(working && elapsed, el => el.child(text(elapsed,8,c.dim).truncate()))))
         .child(h_flex().h(16).flex_none().items_end().gap(2)
           .tooltip('会话活动指示')
           .children([7,12,16,10,14,8,11].map((height,i)=>
@@ -407,20 +366,19 @@ export default class ClaudeStatus extends View {
               .bg(working ? c.working : c.dim)
               .when(working,el=>el.loop('height',{from:3+(i%3),to:height,period:880+i*137})
                 .loop('opacity',{from:0.4,to:1,period:1150+i*93}))))))
-      .child(section('Session', h_flex().items_center().gap(5).px(6).py(2).rounded_full()
-          .border(1).border_color(c.line).child(dot(stateColor,false,4)).child(text(stateLabel,8,c.muted)))
+      .child(section('Session')
         .child(div().w_full().text_size(13).font_semibold().truncate().text_color(c.text).child(title))
         .child(text(folder(cwd,home()) || '—',9,c.muted).w_full().truncate().tooltip(cwd ?? ''))
-        .child(h_flex().w_full().pt(4).items_center().gap(6)
-          .child(chip('codex-model-picker', pickerOpen('model'), isCodex || Boolean(rawModel))
+        .when(Boolean(model || effort), el => el.child(h_flex().w_full().pt(4).items_center().gap(6)
+          .when(Boolean(model), el => el.child(chip('codex-model-picker', pickerOpen('model'), isCodex)
             .when(isCodex, el => el.cursor_pointer().hover(s=>s.bg(c.hover))
               .tooltip('选择当前会话的模型').on_click((_e,cx)=>this.togglePicker('model',lead.address,cx)))
-            .child(text(rawModel ?? programName,10,c.text).truncate())
-            .when(isCodex, el=>el.child(text('⌄',10,c.dim))))
+            .child(text(model,10,c.text).truncate())
+            .when(isCodex, el=>el.child(text('⌄',10,c.dim)))))
           .when(Boolean(effort),el=>el.child(chip(isCodex ? 'codex-effort-picker' : 'session-effort', isCodex && pickerOpen('effort')).flex_none()
             .when(isCodex, el => el.cursor_pointer().hover(s=>s.bg(c.hover)).tooltip('选择推理强度').on_click((_e,cx)=>this.togglePicker('effort',lead.address,cx)))
             .child(text(effort,10,c.text))
-            .when(isCodex, el=>el.child(text('⌄',10,c.dim))))))
+            .when(isCodex, el=>el.child(text('⌄',10,c.dim)))))))
         .when(this.picker?.address === lead?.address && Boolean(this.picker), el=>el.child(
           v_flex().id('codex-options').w_full().max_h(210).overflow_y_scrollbar().gap(1)
             .p(4).rounded(6).bg(c.inset).border(1).border_color(c.line)
@@ -433,7 +391,7 @@ export default class ClaudeStatus extends View {
                 .child(text(option.selected?'✓':'',10,c.accent))))
             .when(!codex?.models?.length, el=>el.child(text('模型目录尚未就绪',10,c.dim).px(6).py(4)))
         )))
-      .child(section('Usage')
+      .when(hasUsageData || Boolean(codex?.error ?? agy?.error) || isKimi, el => el.child(section('Usage')
         .child(v_flex().w_full().gap(10)
           .when(hasContext, el => el.child(metric('CONTEXT', context.percent, 'used', (context.percent >= 80 ? c.warn : c.accent), context.percent, false)))
           .when(hasWeekly && has5h, el => el.child(h_flex().w_full().gap(8)
@@ -443,23 +401,19 @@ export default class ClaudeStatus extends View {
           .when(!hasWeekly && has5h, el => el.child(metric('5-HOUR', fiveHour, 'left', (fiveHour <= 20 ? c.warn : c.accent), fiveHour, false)))
           .when(credits != null, el => el.child(creditMetric(credits)))
           .when(weeklyReset != null, el => el.child(row('Weekly reset', new Date(weeklyReset * 1000).toLocaleDateString('en-US',{month:'short',day:'numeric'}))))
-          .when(Boolean(codex?.error ?? agy?.error), el => el.child(text((codex?.error ?? agy?.error),8,c.dim)))
-          .when(!hasUsageData && !(codex?.error ?? agy?.error), el => el.child(text('—',10,c.dim)))
-          .when(isKimi, el => el.child(text(this.limitsLoading ? 'Refreshing…' : '↻ Refresh limits',9,c.muted)
-            .id('refresh-kimi-limits').cursor_pointer().hover(s=>s.text_color(c.text)).on_click((_e,cx)=>this.refreshLimits(cx))))))
-      .child(section('Workspace')
+          .when(Boolean(codex?.error ?? agy?.error), el => el.child(text((codex?.error ?? agy?.error),8,c.dim))))))
+      .when(Boolean(branch || space?.machine || this.git), el => el.child(section('Workspace')
         .child(h_flex().w_full().items_center().justify_between().gap(10)
-          .child(text(branch ? `⑂ ${branch}` : 'No branch',10,branch ? c.muted : c.dim).min_w(0).truncate())
-          .child(text((this.git ? (this.git.changed ? `${this.git.changed} changed` : 'Clean') : branch ? '' : 'No repository') + (sync ? `  ${sync}` : ''),9,this.git?.changed ? c.warn : c.dim).flex_none())))
-      .child(section('Agents', text(String(list.length),9,c.dim))
+          .child(text([space?.machine, branch ? `⑂ ${branch}` : null].filter(Boolean).join(' · '),10,c.muted).min_w(0).truncate())
+          .child(text((this.git ? (this.git.changed ? `${this.git.changed} changed` : 'Clean') : '') + (sync ? `  ${sync}` : ''),9,this.git?.changed ? c.warn : c.dim).flex_none()))))
+      .when(list.length > 1, el => el.child(section('Agents', text(String(list.length),9,c.dim))
         .child(v_flex().id('status-agent-list').w_full().gap(1).max_h(90).overflow_y_scrollbar()
           .children(list.map(agent=>h_flex().id(`status-agent-${agent.address}`).w_full().items_center().gap(8)
             .px(7).py(5).rounded(5).when(agent.focused, el=>el.bg(c.selected)).cursor_pointer()
             .hover(s=>s.bg(c.hover)).on_click(()=>run('pane.focus',{pane:agent.pane}))
             .child(dot(toneOf(agent.status),agent.status==='working'))
             .child(text(agent.program?.name ?? 'Agent',10,agent.focused ? c.text : c.muted).flex_1().min_w(0).truncate())
-            .child(text(statusInfo(agent.status).label.toLowerCase(),9,c.dim).flex_none())))))
-      .child(div().flex_1())
-      .child(text(space?.machine ?? 'local',8,c.dim).truncate());
+            .child(text(statusInfo(agent.status).label.toLowerCase(),9,c.dim).flex_none()))))))
+      .child(div().flex_1());
   }
 }

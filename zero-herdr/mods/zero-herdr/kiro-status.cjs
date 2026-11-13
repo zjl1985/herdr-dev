@@ -2,7 +2,6 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
-const { StringDecoder } = require('node:string_decoder');
 
 const CHUNK_BYTES = 1024 * 1024;
 
@@ -79,41 +78,58 @@ function parseMessages(text) {
   for (const line of text.split('\n')) parseLine(usage, line);
   return usage;
 }
-// Reads the whole log in fixed-size chunks so credits cover every turn without loading it at once.
-function readMessages(file) {
-  const usage = newUsage();
-  const decoder = new StringDecoder('utf8');
+function readMessages(file, previous = null) {
+  const stat = fs.statSync(file);
+  if (previous?.path === file && previous.size === stat.size && previous.mtimeMs === stat.mtimeMs) {
+    return { usage: previous.usage, cache: previous };
+  }
+
+  const append = previous?.path === file && stat.size > previous.size && previous.offset <= previous.size;
+  const usage = append ? { ...previous.usage } : newUsage();
+  let offset = append ? previous.offset : 0;
+  let rest = Buffer.alloc(0);
   const buffer = Buffer.alloc(CHUNK_BYTES);
   const fd = fs.openSync(file, 'r');
   try {
-    let rest = '';
+    let position = offset;
     for (;;) {
-      const read = fs.readSync(fd, buffer, 0, buffer.length, null);
+      const read = fs.readSync(fd, buffer, 0, buffer.length, position);
       if (read === 0) break;
-      const lines = (rest + decoder.write(buffer.subarray(0, read))).split('\n');
-      rest = lines.pop();
-      for (const line of lines) parseLine(usage, line);
+      position += read;
+      const data = rest.length ? Buffer.concat([rest, buffer.subarray(0, read)]) : buffer.subarray(0, read);
+      const newline = data.lastIndexOf(0x0a);
+      if (newline < 0) { rest = data; continue; }
+      for (const line of data.subarray(0, newline).toString('utf8').split('\n')) parseLine(usage, line);
+      offset += newline + 1;
+      rest = data.subarray(newline + 1);
     }
-    parseLine(usage, rest + decoder.end());
   } finally { fs.closeSync(fd); }
-  return usage;
+  return { usage, cache: { path: file, size: stat.size, mtimeMs: stat.mtimeMs, offset, usage } };
 }
-function readStatus(cwd, title) {
+function readStatus(cwd, title, previous = null) {
   const match = findSession(cwd, title);
   if (!match) return { error: 'Waiting for matching Kiro session' };
   const { dir, session } = match;
   let usage = newUsage();
-  try { usage = readMessages(path.join(dir, 'messages.jsonl')); } catch {}
+  let cache = null;
+  try {
+    const result = readMessages(path.join(dir, 'messages.jsonl'), previous);
+    usage = result.usage;
+    cache = result.cache;
+  } catch {}
   return {
     id: session.id, title: session.title,
     model: session.contextSnapshotModelDisplay?.display ?? session.modelId ?? null,
     context: usage.percent != null ? { percent: usage.percent } : null,
     credits: usage.credits != null ? Math.round(usage.credits * 100) / 100 : null,
     updatedAt: usage.updatedAt ?? session.lastModifiedAt ?? null,
+    cache,
   };
 }
 if (require.main === module) {
-  try { console.log(JSON.stringify(readStatus(process.argv[2] || '', process.argv[3] || ''))); }
+  let cache = null;
+  try { cache = JSON.parse(process.argv[4] || 'null'); } catch {}
+  try { console.log(JSON.stringify(readStatus(process.argv[2] || '', process.argv[3] || '', cache))); }
   catch { console.log(JSON.stringify({ error: 'Kiro session data unavailable' })); }
 }
 module.exports = { findSession, parseMessages, readStatus };

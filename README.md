@@ -5,7 +5,7 @@ Herdr 主题、布局与 mod 的统一开发仓库，当前主题为 **zero-herd
 ## zero-herdr
 
 - 暖灰与陶土橙配色，支持深色、浅色主题。
-- 右侧状态面板：当前任务、Git 状态、Codex 上下文与额度信息。
+- 右侧状态面板：当前任务、Git 状态，以及 Codex、Kiro、Kimi、Antigravity 的上下文与额度信息。
 - 模型及推理强度下拉选择器，作用于当前 Codex 会话。
 - 紧凑动态 banner，工作时短柱律动，空闲时静止。
 - Claude 风格侧栏及终端面板布局。
@@ -35,7 +35,7 @@ Codex 状态通过本机的会话数据库、日志和模型目录读取，不�
 源码位于 `zero-herdr/`。修改 mod 后先校验，再同步到 Herdr 的运行目录：
 
 ```sh
-herdr-app check zero-herdr/mods/claude-status
+herdr-app check zero-herdr/mods/zero-herdr
 ```
 
 具体约定见 [AGENTS.md](AGENTS.md)。

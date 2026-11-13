@@ -83,7 +83,7 @@
             {
               "id": "status-toggle",
               "content": {
-                "mod": "claude-status-toggle"
+                "mod": "zero-herdr-toggle"
               },
               "edge": "right",
               "align": "center"
@@ -162,7 +162,7 @@
               ]
             },
             {
-              "id": "agent-status",
+              "id": "zero-herdr",
               "type": "block",
               "size": {
                 "px": 300
@@ -170,7 +170,7 @@
               "min": 280,
               "max": 420,
               "content": {
-                "mod": "claude-status"
+                "mod": "zero-herdr"
               }
             }
           ]

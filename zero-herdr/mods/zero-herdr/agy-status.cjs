@@ -8,18 +8,20 @@ function agyRoot() {
   return process.env.AGY_HOME || process.env.ANTIGRAVITY_HOME || path.join(os.homedir(), '.gemini/antigravity-cli');
 }
 
-function getConversationTitle(root, conversationId) {
-  if (!conversationId) return null;
+function getConversationTitles(root, conversationIds) {
+  const titles = new Map();
+  const ids = [...new Set(conversationIds.filter(Boolean))];
   const dbPath = path.join(root, 'conversation_summaries.db');
-  if (!fs.existsSync(dbPath)) return null;
+  if (!ids.length || !fs.existsSync(dbPath)) return titles;
   try {
     const quote = value => "'" + value.replaceAll("'", "''") + "'";
-    const query = `SELECT title FROM conversation_summaries WHERE conversation_id=${quote(conversationId)} LIMIT 1`;
-    const res = JSON.parse(execFileSync('sqlite3', ['-readonly', '-json', dbPath, query], { encoding: 'utf8', timeout: 2000 }) || '[]');
-    return res[0]?.title || null;
-  } catch {
-    return null;
-  }
+    const query = `SELECT conversation_id,title FROM conversation_summaries WHERE conversation_id IN (${ids.map(quote).join(',')})`;
+    const rows = JSON.parse(execFileSync('sqlite3', ['-readonly', '-json', dbPath, query], { encoding: 'utf8', timeout: 2000 }) || '[]');
+    for (const row of rows) {
+      if (row.conversation_id && row.title) titles.set(row.conversation_id, row.title);
+    }
+  } catch {}
+  return titles;
 }
 
 function readStatus(cwd, title) {
@@ -46,7 +48,6 @@ function readStatus(cwd, title) {
     return { error: 'Waiting for matching Antigravity session' };
   }
 
-  // Filter or score candidates based on cwd and title
   const cleanTitle = (title || '').replace(/^[^\p{L}\p{N}]+/u, '').trim();
   for (const c of candidates) {
     const dataCwd = c.data.workspace?.project_dir || c.data.workspace?.current_dir || c.data.cwd || '';
@@ -58,20 +59,23 @@ function readStatus(cwd, title) {
       }
     }
     c.depth = depth;
-
-    // Check title match
-    let rank = 0;
-    const cid = c.data.conversation_id || c.data.session_id;
-    const convTitle = getConversationTitle(root, cid);
-    c.convTitle = convTitle;
-    if (cleanTitle && convTitle) {
-      if (cleanTitle === convTitle) rank = 2;
-      else if (cleanTitle.startsWith(convTitle) || convTitle.startsWith(cleanTitle)) rank = 1;
-    }
-    c.rank = rank;
   }
 
-  // Best match: rank > depth > mtime
+  if (cwd) candidates = candidates.filter(c => c.depth >= 0);
+  if (!candidates.length) {
+    return { error: 'Waiting for matching Antigravity session' };
+  }
+
+  const titles = getConversationTitles(root, candidates.map(c => c.data.conversation_id || c.data.session_id));
+  for (const c of candidates) {
+    const cid = c.data.conversation_id || c.data.session_id;
+    const convTitle = titles.get(cid) || null;
+    c.convTitle = convTitle;
+    c.rank = cleanTitle && convTitle
+      ? cleanTitle === convTitle ? 2 : convTitle.length >= 8 && cleanTitle.startsWith(convTitle) ? 1 : 0
+      : 0;
+  }
+
   candidates.sort((a, b) => (b.rank - a.rank) || (b.depth - a.depth) || (b.mtime - a.mtime));
   const best = candidates[0];
   const data = best.data;

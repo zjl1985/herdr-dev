@@ -5,7 +5,7 @@
 ## 目录与部署
 
 - `zero-herdr/`：当前维护的主题项目，包括 `themes/` 配色、`layouts/` 布局、`mods/` 组件和 `install.sh` 安装脚本。
-- `zero-herdr/mods/claude-status/`：右侧状态面板，含 Codex 会话数据读取、模型与推理强度选择器。
+- `zero-herdr/mods/zero-herdr/`：右侧状态面板，含 Codex 会话数据读取、模型与推理强度选择器。
 - `~/.config/herdr-app/`：Herdr 的实际运行配置目录，不是本仓库的源码目录。先修改仓库源码，校验通过后再同步需要的文件；布局和 mod 支持热重载。
 - Git 状态、差异、提交和新增项目都以本目录为根。主题源码保留在子目录中。
 

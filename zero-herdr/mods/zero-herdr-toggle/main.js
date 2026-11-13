@@ -11,9 +11,9 @@ function findNode(node, id) {
   return null;
 }
 
-export default class ClaudeStatusToggle extends View {
+export default class ZeroHerdrToggle extends View {
   render() {
-    const panel = findNode(layout(), "agent-status");
+    const panel = findNode(layout(), "zero-herdr");
     if (!panel || !panel.hidden) return div();
 
     const t = theme();
@@ -40,7 +40,7 @@ export default class ClaudeStatusToggle extends View {
       .text_color(t.dim)
       .hover((style) => style.bg(t.hover).text_color(t.foreground))
       .tooltip("Show workspace status")
-      .on_click(() => run("layout.show", { id: "agent-status" }))
+      .on_click(() => run("layout.show", { id: "zero-herdr" }))
       .child(
         div()
           .size(6)
