@@ -19,10 +19,38 @@ import {
   props,
   machines,
   hc,
+  keys,
   window as appWindow,
 } from "herdr";
 
 const FOLD_KEY = "machines.folded";
+const FADE_MS = 170;
+const OPEN_MS = 240;
+const CLOSE_MS = 200;
+const GHOST_DELAY = 70;
+const SIDEBAR_W = 268;
+const INSTANT = "claude-drawer.instant";
+
+const EDGE = 44;
+const ROW = 32;
+const TILE = 26;
+const MONO = "Geist Mono";
+const CLAUDE_ICON = "mods/claude-drawer/claude-code.svg";
+const ZERO_MARK = "mods/claude-drawer/zero-mark.svg";
+
+function withAlpha(color, alphaHex) {
+  if (typeof color !== "string" || !color.startsWith("#")) return color;
+  if (color.length === 7) return `${color}${alphaHex}`;
+  if (color.length === 9) {
+    const orig = parseInt(color.slice(7, 9), 16) / 255;
+    const scale = parseInt(alphaHex, 16) / 255;
+    const next = Math.round(Math.max(0, Math.min(255, orig * scale * 255)))
+      .toString(16)
+      .padStart(2, "0");
+    return `${color.slice(0, 7)}${next}`;
+  }
+  return color;
+}
 
 function findNode(node, id) {
   if (node?.id === id) return node;
@@ -33,12 +61,29 @@ function findNode(node, id) {
   return null;
 }
 
-const FADE_MS = 170;
-const OPEN_MS = 240;
-const CLOSE_MS = 200;
-const GHOST_DELAY = 70; // 收起：等背后布局切换完再开始收回
-const SIDEBAR_W = 268;
-const INSTANT = "claude-drawer.instant"; // 浮层动画刚结束：固定侧栏直接出现，不再淡入
+function keyHint(action, mac) {
+  const mod = {
+    cmd: mac ? "⌘" : "Ctrl+",
+    ctrl: mac ? "⌃" : "Ctrl+",
+    shift: mac ? "⇧" : "Shift+",
+    alt: mac ? "⌥" : "Alt+",
+    option: mac ? "⌥" : "Alt+",
+  };
+  const binding = keys().find((k) => k.section === "global" && k.action === action);
+  if (!binding?.keys) return null;
+  const parts = binding.keys.endsWith("--")
+    ? [...binding.keys.slice(0, -2).split("-"), "-"]
+    : binding.keys.split("-");
+  return parts.map((p) => mod[p.toLowerCase()] ?? p.toUpperCase()).join("");
+}
+
+function formatElapsed(ms) {
+  const sec = Math.max(0, Math.floor(ms / 1000));
+  if (sec < 60) return `${sec}s`;
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min}m`;
+  return `${Math.floor(min / 60)}h${min % 60 ? `${min % 60}m` : ""}`;
+}
 
 function aggregateSpaceStatus(spaceId, agentList, focusedPaneId) {
   let hasDone = false;
@@ -58,7 +103,7 @@ function aggregateSpaceStatus(spaceId, agentList, focusedPaneId) {
 function statusColor(status, t) {
   switch (status) {
     case "working":
-      return t.working ?? t.accent;
+      return t.accent ?? t.working;
     case "blocked":
       return t.blocked ?? t.ansi3;
     case "done":
@@ -67,8 +112,6 @@ function statusColor(status, t) {
       return t.dim;
   }
 }
-
-const CLAUDE_ICON = "mods/claude-drawer/claude-code.svg";
 
 function agentProgramIcon(p, size, color) {
   if (!p?.icon) return null;
@@ -84,7 +127,8 @@ function taskDetail(a, paneById, termById) {
   const pane = paneById.get(a.pane);
   const term =
     termById.get(a.address) ?? (pane?.terminal ? termById.get(pane.terminal) : null);
-  const raw = cleanTitle(a.title || term?.title || pane?.title || "");
+  const tabNamed = a.tab_name && !/^(?:tb)?\d+$/i.test(a.tab_name) ? cleanTitle(a.tab_name) : "";
+  const raw = tabNamed || cleanTitle(a.title || term?.title || pane?.title || "");
   if (!raw) return null;
   const lower = raw.toLowerCase();
   if (
@@ -101,46 +145,65 @@ function taskDetail(a, paneById, termById) {
   return raw;
 }
 
-const EDGE = 44;
-const ROW = 30;
-const TILE = 26;
-
 function iconBtn(id, iconPath, t, onClick) {
   return div()
     .id(id)
     .size(24)
-    .rounded(7)
+    .rounded(6)
     .flex_none()
     .flex()
     .items_center()
     .justify_center()
     .cursor_pointer()
-    .hover((s) => s.bg(t.hover))
+    .text_color(t.dim)
+    .hover((s) => s.bg(t.hover).text_color(t.foreground))
     .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
     .on_click(onClick)
-    .child(svg(iconPath).size(14).text_color(t.dim));
+    .child(svg(iconPath).size(13));
 }
 
-// 一行：边缘格（收起时可见）+ 正文（展开后可见）。悬停只变底色，不改布局。
-// 展开时选中项整行铺浅暖底；收起时只高亮图标格。
-function row(id, onRight, height, edgeEl, bodyEl, t, interactive = true, selected = false, expanded = false) {
+// 一行：边缘槽（收起时精确居中可见）+ 正文槽（展开后可见）。悬停不改几何尺寸，保证零重排丝滑开合。
+function row(
+  id,
+  onRight,
+  height,
+  edgeEl,
+  bodyEl,
+  t,
+  { interactive = true, selected = false, expanded = false, rail = false } = {}
+) {
   const edgeSlot = div()
     .w(EDGE - 8)
     .h_full()
+    .relative()
     .flex_none()
     .flex()
     .items_center()
     .justify_center()
+    .when(rail, (slot) =>
+      slot.child(
+        div()
+          .absolute()
+          .when(!onRight, (bar) => bar.left(1))
+          .when(onRight, (bar) => bar.right(1))
+          .w(2)
+          .h(14)
+          .rounded_full()
+          .bg(t.accent)
+      )
+    )
     .child(edgeEl);
+
   const bodySlot = h_flex()
     .flex_1()
     .min_w(0)
     .h_full()
     .items_center()
     .gap(6)
-    .when(onRight, (s) => s.pl(10).pr(14))
-    .when(!onRight, (s) => s.pl(14).pr(10))
+    .pl(10)
+    .pr(10)
     .child(bodyEl);
+
   let r = h_flex()
     .id(id)
     .h(height)
@@ -150,65 +213,83 @@ function row(id, onRight, height, edgeEl, bodyEl, t, interactive = true, selecte
     .when(onRight, (s) => s.ml(6).mr(4))
     .when(!onRight, (s) => s.ml(4).mr(6))
     .when(selected && expanded, (s) => s.bg(t.selected));
+
   if (interactive) {
     r = r.cursor_pointer().hover((s) => s.bg(selected && expanded ? t.selected : t.hover));
   }
   return onRight ? r.child(bodySlot).child(edgeSlot) : r.child(edgeSlot).child(bodySlot);
 }
 
-// 图标格：无边框，选中时浅暖底
-function tile(content, active, t) {
+function tile(content, { active = false } = {}, t) {
   return div()
     .relative()
     .size(TILE)
-    .rounded(8)
+    .rounded(7)
     .flex()
     .items_center()
     .justify_center()
-    .when(active, (d) => d.bg(t.selected))
+    .when(active, (d) => d.bg(t.selected).border_1().border_color(t.input))
     .child(content);
 }
 
-function statusDot(status, t, size = 7) {
+function statusBadge(id, status, t, haloBg, corner = "bottom") {
+  const color = statusColor(status, t);
+  const pulse = status === "working";
+  const dotSize = status === "blocked" ? 6 : 5;
   return div()
     .absolute()
-    .top(-1)
-    .right(-1)
-    .size(size + 3)
+    .when(corner === "top", (d) => d.top(-1).right(-1))
+    .when(corner !== "top", (d) => d.bottom(-1).right(-1))
+    .size(dotSize + 3)
     .rounded_full()
-    .bg(t.background)
+    .bg(haloBg)
     .flex()
     .items_center()
     .justify_center()
-    .child(div().size(size).rounded_full().bg(statusColor(status, t)));
+    .child(
+      div()
+        .id(id)
+        .size(dotSize)
+        .rounded_full()
+        .bg(color)
+        .when(pulse, (el) => el.loop("opacity", { from: 0.48, to: 1, period: 1400 }))
+    );
 }
 
-// 分组标题：收起时是一条短细线，展开后是小号灰字 + 数量
-function sectionLabel(id, label, count, onRight, t) {
-  const edge = div().w(14).h(1).bg(t.border);
+// 分组标题：收起态是居中 12px 细刻线，展开态是 Geist Mono 微大写标签 + 计数
+function sectionLabel(id, label, rightEl, onRight, t) {
+  const edge = div().w(12).h(1).rounded_full().bg(t.border);
   const body = h_flex()
     .w_full()
     .items_center()
     .justify_between()
-    .child(div().text_size(11.5).font_medium().text_color(t.dim).child(label))
-    .when(count != null, (s) =>
-      s.child(div().text_size(10.5).text_color(t.dim).child(String(count)))
-    );
-  return row(id, onRight, 24, edge, body, t, false).mt(6);
+    .font_family(MONO)
+    .child(div().text_size(9.5).font_medium().text_color(t.dim).child(label.toUpperCase()))
+    .when(Boolean(rightEl), (s) => s.child(rightEl));
+  return row(id, onRight, 22, edge, body, t, { interactive: false }).mt(6);
+}
+
+// 对称分割线行：收起态只显示边缘居中细线，绝不戳穿胶囊右边框；展开态自然延伸
+function dividerRow(id, onRight, t) {
+  const edge = div().w(14).h(1).rounded_full().bg(t.border);
+  const body = div().w_full().h(1).bg(t.border);
+  return row(id, onRight, 10, edge, body, t, { interactive: false }).mt(4).mb(2);
 }
 
 export default class ClaudeDrawer extends View {
   init(_props, cx) {
     this.wasVisible = false;
-    this.shown = false; // 进场动画目标
-    this.leaving = false; // 退场动画中
+    this.shown = false;
+    this.leaving = false;
     this.syncing = false;
-    // 机器分组：折叠状态持久化；连接状态每 15s 用 hc 问一次（浮层动画副本不问）
     this.folded = new Set(JSON.parse(localStorage.getItem(FOLD_KEY) ?? "[]"));
     this.hosts = [];
     if (!props()?.ghost && cx?.timer) {
       cx.timer.after(10, (cx) => this.refreshHosts(cx));
       cx.timer.every(15000, (cx) => this.refreshHosts(cx));
+      cx.timer.every(1000, (cx) => {
+        if (agents().some((a) => a.status === "working")) cx.notify();
+      });
     }
   }
 
@@ -222,7 +303,6 @@ export default class ClaudeDrawer extends View {
     } catch {}
   }
 
-  // scope: "sp"（Spaces，旧的折叠键不变）或 "ag"（Agents，独立折叠）
   foldKey(m, scope = "sp") {
     return scope === "sp" ? (m ?? "") : `${scope}:${m ?? ""}`;
   }
@@ -234,47 +314,53 @@ export default class ClaudeDrawer extends View {
     cx.notify();
   }
 
-  // 机器分组标题：收起时是 显示器/服务器 图标 + 连接圆点；展开后是 名称 · 数量 · + · 折叠箭头
-  machineHeader(m, count, onRight, t, scope = "sp", urgent = null) {
+  machineHeader(m, count, onRight, t, haloBg, scope = "sp", urgent = null) {
     const host = this.hosts.find((h) => h.name === m);
     const layoutState = machines().find((k) => k.name === m)?.layout;
     const connected = !m || host?.state === "connected" || (!host && layoutState === "ready");
     const state = connected ? "connected" : (host?.state ?? layoutState ?? "asleep").replace(/_/g, " ");
     const folded = this.folded.has(this.foldKey(m, scope));
-    const label = m ?? "This computer";
+    const label = m ?? "Local";
     const canAdd = connected && scope === "sp";
 
     const edge = tile(
-      svg(`mods/workspace-chrome/${m ? "server" : "monitor"}.svg`).size(14).text_color(t.dim),
-      false,
+      svg(`mods/workspace-chrome/${m ? "server" : "monitor"}.svg`).size(13).text_color(t.dim),
+      {},
       t
     ).child(
       div()
         .absolute()
-        .bottom(2)
-        .right(2)
+        .bottom(1)
+        .right(1)
         .size(7)
         .rounded_full()
-        .border_1()
-        .border_color(t.background)
-        .bg(connected ? t.done ?? t.ansi2 : t.dim)
+        .bg(haloBg)
+        .flex()
+        .items_center()
+        .justify_center()
+        .child(div().size(4).rounded_full().bg(connected ? t.done ?? t.ansi2 : t.dim))
     );
-    // 折叠的 Agents 组里有需要关注的：收起态也能看到
-    if (folded && urgent) edge.child(statusDot(urgent, t, 6));
+    if (folded && urgent) {
+      edge.child(statusBadge(`fold-urgent-${scope}-${m ?? "local"}`, urgent, t, haloBg, "top"));
+    }
 
     const body = h_flex()
       .w_full()
       .min_w(0)
       .items_center()
       .gap(6)
-      .text_size(11.5)
+      .text_size(11)
       .text_color(t.dim)
       .child(div().flex_1().min_w(0).truncate().font_medium().child(label))
-      .when(!connected, (s) => s.child(div().flex_none().text_size(10.5).child(state)))
-      .when(folded && Boolean(urgent), (s) =>
-        s.child(div().flex_none().size(6).rounded_full().bg(statusColor(urgent, t)))
+      .when(!connected, (s) =>
+        s.child(div().flex_none().font_family(MONO).text_size(9.5).child(state))
       )
-      .when(folded, (s) => s.child(div().flex_none().text_size(10.5).child(String(count))))
+      .when(folded && Boolean(urgent), (s) =>
+        s.child(div().flex_none().size(5).rounded_full().bg(statusColor(urgent, t)))
+      )
+      .when(folded, (s) =>
+        s.child(div().flex_none().font_family(MONO).text_size(9.5).child(String(count)))
+      )
       .when(canAdd, (s) =>
         s.child(
           div()
@@ -285,8 +371,9 @@ export default class ClaudeDrawer extends View {
             .flex()
             .items_center()
             .justify_center()
-            .hover((h) => h.bg(t.hover))
+            .hover((h) => h.bg(t.hover).text_color(t.foreground))
             .tooltip(`New space on ${label}`)
+            .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
             .on_click((_e, cx) => {
               cx.stop_propagation();
               run("space.new", { machine: m ?? "" });
@@ -302,13 +389,11 @@ export default class ClaudeDrawer extends View {
       );
 
     return row(`drawer-${scope}-machine-${m ?? "local"}`, onRight, 26, edge, body, t)
-      .mt(4)
+      .mt(2)
       .tooltip(`${label} · ${state}`)
       .on_click((_e, cx) => this.toggleFold(m, cx, scope));
   }
 
-  // 动画放在一个透明浮层里由 GPUI 原生绘制（帧率跟屏幕一致），布局只在开头或结尾切一次，
-  // 终端只重排一次，避免逐帧改宽度造成的卡顿。
   openGhost(mode) {
     return openOverlay({
       mod: "claude-drawer",
@@ -325,7 +410,7 @@ export default class ClaudeDrawer extends View {
     if (this.leaving) return;
     this.leaving = true;
     if (pin) {
-      cx.notify(); // 悬浮抽屉先淡出
+      cx.notify();
       cx.timer.after(FADE_MS - 60, (cx) => {
         const ghost = this.openGhost("open");
         cx.timer.after(OPEN_MS + 40, (cx) => {
@@ -340,7 +425,6 @@ export default class ClaudeDrawer extends View {
         });
       });
     } else {
-      // 先用一模一样的浮层盖住，背后切换布局，再让浮层收回
       const ghost = this.openGhost("close");
       cx.timer.after(50, (cx) => {
         run("layout.hide", { id: "sidebar" });
@@ -356,12 +440,11 @@ export default class ClaudeDrawer extends View {
 
   render(cx) {
     const pinned = Boolean(props()?.pinned);
-    const ghost = props()?.ghost ?? null; // "open" | "close"：浮层里的动画副本
+    const ghost = props()?.ghost ?? null;
     const tree = layout();
     const sidebarShown = !findNode(tree, "sidebar")?.hidden;
     const gutterShown = !findNode(tree, "drawer-gutter")?.hidden;
 
-    // 悬浮那份负责让左侧留白栏与固定侧栏保持互斥（cmd-b 等切换也能对齐）
     if (!pinned && !ghost && !this.leaving && !this.syncing && sidebarShown === gutterShown) {
       this.syncing = true;
       cx.timer.after(0, (cx) => {
@@ -371,7 +454,6 @@ export default class ClaudeDrawer extends View {
       });
     }
 
-    // 任何时候只显示一个：固定侧栏在时，悬浮抽屉什么都不画（浮动块随之隐藏）
     const visible = ghost ? true : pinned ? sidebarShown : !sidebarShown;
     if (!visible) {
       this.wasVisible = false;
@@ -381,7 +463,6 @@ export default class ClaudeDrawer extends View {
     if (!this.wasVisible) {
       this.wasVisible = true;
       if (pinned && !ghost && shared(INSTANT)) {
-        // 浮层刚演完展开：真侧栏原样接上，不重复淡入
         this.shown = true;
         cx.timer.after(60, () => setShared(INSTANT, false));
       } else {
@@ -392,7 +473,6 @@ export default class ClaudeDrawer extends View {
         });
       }
     }
-    // 固定侧栏收起时由浮层盖住演动画，自身不淡出
     const on = ghost === "close" || (this.shown && !(this.leaving && !pinned));
 
     const t = theme();
@@ -405,49 +485,95 @@ export default class ClaudeDrawer extends View {
     const foc = focused();
     const focusedPane = foc?.pane ?? null;
     const updateReady = Boolean(updates().app.ready);
-    // 未浮动（固定在栏里）或鼠标悬停时视为展开
     const expanded = !place || Boolean(place.hovered);
+    const haloBg = pinned || ghost ? t.chrome : t.popover ?? t.surface;
+
+    const win = appWindow();
+    const mac = win?.platform === "macos";
+    const newSpaceKey = keyHint("space.new", mac);
+    const searchKey = keyHint("mod.open:picker", mac);
+    const sidebarKey = keyHint("layout.toggle:sidebar", mac);
+    const settingsKey = keyHint("app.settings", mac);
 
     const spaceOrder = new Map(spaceList.map((s, i) => [s.id, i]));
+    const tabByKey = new Map();
+    for (const s of spaceList) {
+      for (const tb of s.tabs ?? []) tabByKey.set(`${s.id}:${tb.id}`, tb);
+    }
+
     const agentList = [...rawAgents].sort((a, b) => {
       const sa = spaceOrder.get(a.space) ?? 9999;
       const sb = spaceOrder.get(b.space) ?? 9999;
       if (sa !== sb) return sa - sb;
+      if (a.tab_index !== b.tab_index) return (a.tab_index ?? 0) - (b.tab_index ?? 0);
       return String(a.pane).localeCompare(String(b.pane));
     });
     setAgentOrder(agentList.map((a) => a.address));
 
+    // 同空间内若同一程序有多个实例，辅助区分标签页序号
+    const siblingCounts = new Map();
+    for (const a of agentList) {
+      const k = `${a.space}:${a.program?.key ?? a.app ?? ""}`;
+      siblingCounts.set(k, (siblingCounts.get(k) ?? 0) + 1);
+    }
+
     const paneById = new Map(paneList.map((p) => [p.pane, p]));
     const termById = new Map(termList.map((tm) => [tm.address, tm]));
 
-    const win = appWindow();
-    const topPad = pinned && win?.platform === "macos" && !win?.fullscreen ? 34 : pinned ? 8 : 4;
+    const workingCount = agentList.filter((a) => a.status === "working").length;
+    const blockedCount = agentList.filter((a) => a.status === "blocked").length;
+
+    const topPad = pinned && mac && !win?.fullscreen ? 34 : pinned ? 8 : 5;
     const slide = onRight ? 10 : -10;
     const root = v_flex()
       .id("claude-drawer-root")
       .when(pinned, (r) => r.w(SIDEBAR_W).h_full().flex_none().overflow_y_scrollbar())
-      .when(!pinned, (r) => r.w(268))
+      .when(!pinned, (r) => r.w(SIDEBAR_W))
       .relative()
       .pt(topPad)
-      .pb(4)
-      .text_size(13)
+      .pb(5)
+      .gap(2)
+      .text_size(12.5)
       .opacity(on ? 1 : 0)
       .left(on ? 0 : slide)
       .transition("opacity", { duration: FADE_MS, easing: "ease-out" })
       .transition("left", { duration: FADE_MS + 40, easing: "ease-out" });
 
-    // 1. 顶部：品牌 + 快捷按钮
-    const brandEdge = tile(image("frame/welcome/herdr.png").size(20).rounded(5), false, t);
+    // 1. 顶部：Zero 几何徽记 + 品牌标题 + 搜索 / 侧栏切换
+    const brandEdge = div()
+      .size(TILE)
+      .rounded(7)
+      .bg(withAlpha(t.accent, "14"))
+      .border_1()
+      .border_color(withAlpha(t.accent, "32"))
+      .flex()
+      .items_center()
+      .justify_center()
+      .child(svg(ZERO_MARK).size(15).text_color(t.accent));
+
     const brandBody = h_flex()
       .w_full()
       .items_center()
       .justify_between()
       .child(
-        div()
-          .font_family("Anthropic Serif Web")
-          .text_size(18)
-          .text_color(t.foreground)
-          .child("Herdr")
+        h_flex()
+          .min_w(0)
+          .items_baseline()
+          .gap(6)
+          .child(
+            div()
+              .text_size(13.5)
+              .font_semibold()
+              .text_color(t.foreground)
+              .child("Zero")
+          )
+          .child(
+            div()
+              .font_family(MONO)
+              .text_size(9.5)
+              .text_color(t.dim)
+              .child("HERDR")
+          )
       )
       .child(
         h_flex()
@@ -456,65 +582,152 @@ export default class ClaudeDrawer extends View {
           .child(
             iconBtn("drawer-search", "mods/workspace-chrome/search.svg", t, () =>
               run("mod.open", { name: "picker" })
-            )
+            ).tooltip(searchKey ? `Switch or search (${searchKey})` : "Switch or search")
           )
           .when(!props()?.pinOnly, (el) =>
             el.child(
               iconBtn(
                 "drawer-sidebar",
-                pinned ? "mods/workspace-chrome/panel-left.svg" : "mods/workspace-chrome/sidebar.svg",
+                pinned
+                  ? "mods/workspace-chrome/panel-left.svg"
+                  : "mods/workspace-chrome/sidebar.svg",
                 t,
                 (_e, cx) => this.switchMode(!pinned, cx)
-              ).tooltip(pinned ? "Float sidebar" : "Pin sidebar")
+              ).tooltip(
+                (pinned ? "Float sidebar" : "Pin sidebar") +
+                  (sidebarKey ? ` (${sidebarKey})` : "")
+              )
             )
           )
       );
-    root.child(row("drawer-header", onRight, 38, brandEdge, brandBody, t, false));
+    root.child(row("drawer-header", onRight, 34, brandEdge, brandBody, t, { interactive: false }));
 
-    // 新建空间：Claude 式「New chat」入口
+    // 新建空间：克制温润的微描边按键，不再用高饱和全填充色块抢夺注意力
     const newEdge = div()
       .size(TILE)
-      .rounded(8)
-      .bg(t.accent)
+      .rounded(7)
+      .bg(t.surface)
+      .border_1()
+      .border_color(t.border)
       .flex()
       .items_center()
       .justify_center()
-      .child(svg("mods/workspace-chrome/plus.svg").size(14).text_color(t.accent_foreground));
-    const newBody = div().text_size(13).text_color(t.foreground).child("New space");
+      .child(svg("mods/workspace-chrome/plus.svg").size(13).text_color(t.muted));
+    const newBody = h_flex()
+      .w_full()
+      .items_center()
+      .justify_between()
+      .child(div().text_size(12.5).text_color(t.muted).child("New space"))
+      .when(Boolean(newSpaceKey), (el) =>
+        el.child(div().font_family(MONO).text_size(10).text_color(t.dim).child(newSpaceKey))
+      );
     root.child(
-      row("drawer-new", onRight, ROW + 4, newEdge, newBody, t).on_click(() => run("space.new"))
+      row("drawer-new", onRight, ROW, newEdge, newBody, t)
+        .tooltip(newSpaceKey ? `New space (${newSpaceKey})` : "New space")
+        .on_click(() => run("space.new"))
     );
 
-    // 2. Spaces（有远程机器时按机器分组）
-    root.child(sectionLabel("drawer-spaces-label", "Spaces", spaceList.length, onRight, t));
+    // 2. Spaces 分组
+    root.child(
+      sectionLabel(
+        "drawer-spaces-label",
+        "Spaces",
+        div().text_size(9.5).text_color(t.dim).child(String(spaceList.length)),
+        onRight,
+        t
+      )
+    );
+
     const drawSpace = (w) => {
-      const first = [...(w.name || "")][0] ?? "";
+      const displayName = w.name === "~" ? "Home" : w.name || "Space";
+      const first = [...displayName][0] ?? "";
       const letter = /[\p{L}\p{N}]/u.test(first) ? first.toUpperCase() : null;
       const agg = aggregateSpaceStatus(w.id, agentList, focusedPane);
       const letterEl = letter
         ? div()
-            .text_size(12)
+            .font_family(MONO)
+            .text_size(11)
             .when(w.active, (el) => el.text_color(t.foreground).font_semibold())
-            .when(!w.active, (el) => el.text_color(t.muted))
+            .when(!w.active, (el) => el.text_color(t.muted).font_medium())
             .child(letter)
         : svg("mods/workspace-chrome/folder.svg")
-            .size(14)
+            .size(13)
             .text_color(w.active ? t.foreground : t.muted);
-      const edge = tile(letterEl, w.active && !expanded, t);
-      if (agg) edge.child(statusDot(agg, t, 6));
 
-      const body = div()
-        .flex_1()
+      const rowHalo = w.active && expanded ? t.selected : haloBg;
+      const edge = tile(letterEl, { active: w.active && !expanded }, t);
+      if (agg) {
+        edge.child(statusBadge(`dot-space-${w.id}`, agg, t, rowHalo, "top"));
+      }
+
+      const aggColor = agg ? statusColor(agg, t) : t.dim;
+      const body = h_flex()
+        .w_full()
         .min_w(0)
-        .truncate()
-        .text_size(13)
-        .when(w.active, (el) => el.text_color(t.foreground).font_medium())
-        .when(!w.active, (el) => el.text_color(t.muted))
-        .child(w.name === "~" ? "Home" : w.name);
+        .items_center()
+        .gap(6)
+        .child(
+          div()
+            .flex_1()
+            .min_w(0)
+            .truncate()
+            .text_size(12.5)
+            .when(w.active, (el) => el.text_color(t.foreground).font_medium())
+            .when(!w.active, (el) => el.text_color(t.muted))
+            .child(displayName)
+        )
+        .when(agg === "blocked", (el) =>
+          el.child(
+            div()
+              .flex_none()
+              .px(6)
+              .h(16)
+              .rounded_full()
+              .bg(withAlpha(aggColor, "1a"))
+              .border_1()
+              .border_color(withAlpha(aggColor, "38"))
+              .flex()
+              .items_center()
+              .font_family(MONO)
+              .text_size(9)
+              .text_color(aggColor)
+              .child("input")
+          )
+        )
+        .when(agg === "working" || agg === "done", (el) =>
+          el.child(
+            div()
+              .flex_none()
+              .font_family(MONO)
+              .text_size(9.5)
+              .text_color(aggColor)
+              .child(agg === "working" ? "active" : "done")
+          )
+        )
+        .when(!agg && Boolean(w.branch), (el) =>
+          el.child(
+            div()
+              .flex_none()
+              .max_w(84)
+              .truncate()
+              .font_family(MONO)
+              .text_size(9.5)
+              .text_color(t.dim)
+              .child(`⑂ ${w.branch}`)
+          )
+        );
 
-      return row(`drawer-space-${w.id}`, onRight, ROW, edge, body, t, true, w.active, expanded)
+      const tipParts = [displayName, w.branch ? `⑂ ${w.branch}` : null, agg].filter(Boolean);
+      return row(`drawer-space-${w.id}`, onRight, ROW, edge, body, t, {
+        interactive: true,
+        selected: w.active,
+        expanded,
+        rail: w.active,
+      })
+        .tooltip(tipParts.join(" · "))
         .on_click(() => run("space.select", { id: w.id }))
-        .on_mouse_down("right", (ev) =>
+        .on_mouse_down("right", (ev, cx) => {
+          cx.stop_propagation();
           openOverlay({
             mod: "menu",
             kind: "popup",
@@ -522,8 +735,8 @@ export default class ClaudeDrawer extends View {
             height: 260,
             anchor: ev.mouse,
             props: { tab: "space", target: { id: w.id } },
-          })
-        );
+          });
+        });
     };
 
     const remote = [
@@ -537,14 +750,31 @@ export default class ClaudeDrawer extends View {
     } else {
       for (const m of [null, ...remote]) {
         const mine = spaceList.filter((s) => (s.machine ?? null) === m);
-        root.child(this.machineHeader(m, mine.length, onRight, t));
+        root.child(this.machineHeader(m, mine.length, onRight, t, haloBg));
         if (this.folded.has(m ?? "")) continue;
         for (const w of mine) root.child(drawSpace(w));
       }
     }
 
-    // 3. Agents
-    root.child(sectionLabel("drawer-agents-label", "Agents", agentList.length, onRight, t));
+    // 3. Agents 分组（右侧智能汇总活跃/等待比）
+    const activeCount = blockedCount + workingCount;
+    const agentsMeta =
+      activeCount > 0
+        ? h_flex()
+            .items_center()
+            .gap(2)
+            .child(
+              div()
+                .text_size(9.5)
+                .font_semibold()
+                .text_color(blockedCount > 0 ? statusColor("blocked", t) : statusColor("working", t))
+                .child(String(activeCount))
+            )
+            .child(div().text_size(9.5).text_color(t.dim).child(`/${agentList.length}`))
+        : div().text_size(9.5).text_color(t.dim).child(String(agentList.length));
+
+    root.child(sectionLabel("drawer-agents-label", "Agents", agentsMeta, onRight, t));
+
     if (agentList.length === 0) {
       root.child(
         row(
@@ -554,10 +784,11 @@ export default class ClaudeDrawer extends View {
           div().size(5).rounded_full().bg(t.border),
           div().text_size(12).text_color(t.dim).child("No active agents"),
           t,
-          false
+          { interactive: false }
         )
       );
     } else {
+      const now = Date.now();
       const drawAgent = (a) => {
         const isFocused = Boolean(
           a.focused ||
@@ -568,30 +799,72 @@ export default class ClaudeDrawer extends View {
         );
         const sc = statusColor(a.status, t);
         const detail = taskDetail(a, paneById, termById);
+        const progName = a.program?.name || "Agent";
+        const siblingKey = `${a.space}:${a.program?.key ?? a.app ?? ""}`;
+        const hasDuplicateProg = (siblingCounts.get(siblingKey) ?? 0) > 1;
         const pic = agentProgramIcon(a.program, 15, isFocused ? t.foreground : t.muted);
 
-        const edge = tile(pic ?? div().size(7).rounded_full().bg(sc), isFocused && !expanded, t)
-          .when(!isFocused, (d) => d.opacity(0.9));
-        if (a.status === "working") {
-          edge.child(
-            div()
-              .absolute()
-              .bottom(-2)
-              .right(-2)
-              .size(10)
-              .rounded_full()
-              .bg(t.background)
-              .flex()
-              .items_center()
-              .justify_center()
-              .child(svg("mods/workspace-chrome/spinner.svg").size(8).text_color(sc).spin(900))
-          );
-        } else if (a.status === "blocked" || a.status === "done") {
-          edge.child(statusDot(a.status, t, 6));
+        const rowHalo = isFocused && expanded ? t.selected : haloBg;
+        const edge = tile(
+          pic ?? div().size(6).rounded_full().bg(sc),
+          { active: isFocused && !expanded },
+          t
+        ).when(!isFocused && a.status === "idle", (d) => d.opacity(0.85));
+
+        if (a.status === "working" || a.status === "blocked" || a.status === "done") {
+          edge.child(statusBadge(`dot-agent-${a.address}`, a.status, t, rowHalo, "bottom"));
         }
 
         const spaceName = a.space_name === "~" ? "Home" : a.space_name || "Space";
-        const title = detail || a.program?.name || "Terminal";
+        const title =
+          detail || (hasDuplicateProg && a.tab_index ? `${progName} #${a.tab_index}` : progName);
+
+        const agentTab = tabByKey.get(`${a.space}:${a.tab}`);
+        const workingText =
+          a.status === "working" && agentTab?.working_since
+            ? formatElapsed(now - agentTab.working_since)
+            : "working";
+
+        const rightMeta =
+          a.status === "blocked"
+            ? div()
+                .flex_none()
+                .px(6)
+                .h(17)
+                .flex()
+                .items_center()
+                .rounded_full()
+                .bg(withAlpha(sc, "1a"))
+                .border_1()
+                .border_color(withAlpha(sc, "38"))
+                .font_family(MONO)
+                .text_size(9.5)
+                .font_medium()
+                .text_color(sc)
+                .child("input")
+            : a.status === "working"
+              ? div()
+                  .flex_none()
+                  .font_family(MONO)
+                  .text_size(10)
+                  .text_color(sc)
+                  .child(workingText)
+              : a.status === "done"
+                ? div()
+                    .flex_none()
+                    .font_family(MONO)
+                    .text_size(10)
+                    .text_color(sc)
+                    .child("done")
+                : div()
+                    .flex_none()
+                    .max_w(82)
+                    .truncate()
+                    .font_family(MONO)
+                    .text_size(9.5)
+                    .text_color(t.dim)
+                    .child(spaceName);
+
         const body = h_flex()
           .w_full()
           .min_w(0)
@@ -602,40 +875,43 @@ export default class ClaudeDrawer extends View {
               .flex_1()
               .min_w(0)
               .truncate()
-              .text_size(13)
+              .text_size(12.5)
               .when(isFocused, (el) => el.text_color(t.foreground).font_medium())
               .when(!isFocused, (el) => el.text_color(t.muted))
               .child(title)
           )
-          .child(
-            a.status === "blocked"
-              ? div()
-                  .flex_none()
-                  .px(7)
-                  .h(18)
-                  .flex()
-                  .items_center()
-                  .rounded_full()
-                  .bg(sc + "1f")
-                  .text_size(10.5)
-                  .font_medium()
-                  .text_color(sc)
-                  .child("Needs input")
-              : div()
-                  .flex_none()
-                  .max_w(90)
-                  .truncate()
-                  .text_size(11.5)
-                  .text_color(a.status === "working" ? sc : t.dim)
-                  .child(a.status === "working" ? "Working" : spaceName)
-          );
+          .child(rightMeta);
 
-        return row(`drawer-agent-${a.address}`, onRight, ROW, edge, body, t, true, isFocused, expanded).on_click(() =>
-          run("pane.focus", { pane: a.pane })
-        );
+        const tipLabel = [
+          progName,
+          detail && detail !== progName ? detail : null,
+          `${spaceName}${a.tab_index ? ` #${a.tab_index}` : ""}`,
+          a.status === "working" ? `Working (${workingText})` : a.status,
+        ]
+          .filter(Boolean)
+          .join(" · ");
+
+        return row(`drawer-agent-${a.address}`, onRight, ROW, edge, body, t, {
+          interactive: true,
+          selected: isFocused,
+          expanded,
+          rail: isFocused,
+        })
+          .tooltip(tipLabel)
+          .on_click(() => run("pane.focus", { pane: a.pane }))
+          .on_mouse_down("right", (ev, cx) => {
+            cx.stop_propagation();
+            openOverlay({
+              mod: "menu",
+              kind: "popup",
+              width: 220,
+              height: 260,
+              anchor: ev.mouse,
+              props: { tab: "pane", target: { pane: a.pane, terminal: a.address } },
+            });
+          });
       };
 
-      // 有远程机器时按机器分组（只列出有 agent 的机器）；机器取自所属 space，其次取地址前缀
       const spaceMachine = new Map(spaceList.map((s) => [s.id, s.machine ?? null]));
       const machineOf = (a) =>
         spaceMachine.get(a.space) ?? (a.address.includes("/") ? a.address.split("/")[0] : null);
@@ -650,42 +926,57 @@ export default class ClaudeDrawer extends View {
             (top, a) => ((RANK[a.status] ?? 0) > (RANK[top] ?? 0) ? a.status : top),
             null
           );
-          root.child(this.machineHeader(m, mine.length, onRight, t, "ag", urgent));
+          root.child(this.machineHeader(m, mine.length, onRight, t, haloBg, "ag", urgent));
           if (this.folded.has(this.foldKey(m, "ag"))) continue;
           for (const a of mine) root.child(drawAgent(a));
         }
       }
     }
 
-    // 4. 底部：设置
-    root.child(div().h(6));
-    root.child(div().mx(10).h(1).bg(t.border));
+    // 4. 底部对称分割线 + 设置栏
+    root.child(dividerRow("drawer-divider", onRight, t));
     const footerEdge = tile(
-      svg("mods/workspace-chrome/settings.svg").size(15).text_color(t.dim),
-      false,
+      svg("mods/workspace-chrome/settings.svg").size(14).text_color(t.dim),
+      {},
       t
     ).when(updateReady, (d) =>
-      d.child(div().absolute().top(2).right(2).size(6).rounded_full().bg(t.accent))
+      d.child(statusBadge("dot-settings-update", "working", t, haloBg, "top"))
     );
     const footerBody = h_flex()
       .w_full()
       .items_center()
       .justify_between()
       .child(
-        div()
-          .text_size(13)
-          .text_color(t.muted)
-          .child(updateReady ? "Settings · Update ready" : "Settings")
+        h_flex()
+          .items_center()
+          .gap(6)
+          .child(div().text_size(12.5).text_color(t.muted).child("Settings"))
+          .when(updateReady, (el) =>
+            el.child(
+              div()
+                .px(5)
+                .h(16)
+                .rounded_full()
+                .bg(withAlpha(t.accent, "1c"))
+                .flex()
+                .items_center()
+                .font_family(MONO)
+                .text_size(9)
+                .text_color(t.accent)
+                .child("update")
+            )
+          )
       )
-      .child(div().text_size(11).text_color(t.dim).child("⌃⇧B"));
+      .when(Boolean(settingsKey), (el) =>
+        el.child(div().font_family(MONO).text_size(10).text_color(t.dim).child(settingsKey))
+      );
     root.child(
-      row("drawer-footer", onRight, ROW + 4, footerEdge, footerBody, t)
-        .mt(4)
+      row("drawer-footer", onRight, ROW, footerEdge, footerBody, t)
+        .tooltip(settingsKey ? `Settings (${settingsKey})` : "Settings")
         .on_click(() => run("app.settings"))
     );
 
     if (ghost) {
-      // 浮层：面板宽度原生过渡，内容固定宽度被裁切，像抽屉被拉出 / 推回
       const open = ghost === "open";
       const width = open ? (this.shown ? SIDEBAR_W : 0) : this.shown ? 0 : SIDEBAR_W;
       return h_flex()

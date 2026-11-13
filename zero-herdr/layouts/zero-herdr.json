@@ -179,10 +179,10 @@
           "id": "status",
           "type": "block",
           "size": {
-            "px": 28
+            "px": 26
           },
           "content": {
-            "mod": "workspace-status"
+            "mod": "zero-status"
           }
         }
       ]
