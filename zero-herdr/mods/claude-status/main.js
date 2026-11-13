@@ -267,33 +267,41 @@ export default class ClaudeStatus extends View {
     const dot = (color, pulse=false) => div().size(5).flex_none().rounded_full().bg(color)
       .when(pulse, el => el.loop('opacity', { from: 0.3, to: 1, period: 1600 }));
     const label = (value, color=c.dim) => text(value, 9, color).font_semibold();
-    const badge = (value, color=c.green) => text(value, 8, color).px(6).py(3).rounded(4).bg(color+'16');
-    const card = () => v_flex().w_full().bg(c.card).border(1).border_color(c.border).rounded(8).p(10).gap(7);
+    const badge = (value, color=c.green) => text(value, 8, color).px(5).py(2)
+      .border_l(2).border_color(color).bg(c.inset);
+    const card = () => v_flex().w_full().border_t(1).border_color(c.border).pt(7).pb(2).gap(6);
     const heading = (value, right=null) => h_flex().w_full().items_center().justify_between()
-      .child(h_flex().gap(6).items_center().child(dot(c.green)).child(label(value,c.text)))
+      .child(h_flex().gap(7).items_center()
+        .child(div().w(3).h(11).bg(c.green)).child(label(value,c.text)))
       .when(Boolean(right), el => el.child(right));
-    const meter = (percent, color) => h_flex().w_full().gap(3).children(Array.from({length:18}, (_,i) =>
-      div().flex_1().h(4).rounded(1).bg(percent !== null && i < Math.round(percent*18/100) ? color : c.border)));
-    const metric = (name, value, suffix, color, percent) => v_flex().flex_1().min_w(0).p(8).gap(5)
-      .bg(c.inset).border(1).border_color(c.border).rounded(6)
-      .child(label(name))
-      .child(h_flex().items_baseline().gap(3)
-        .child(text(value === null ? '—' : `${value}%`, 22, color).font_semibold())
-        .child(text(suffix,8,c.muted)))
-      .child(meter(percent,color));
+    // Instrument ticks express a real 0–100 scale, including an explicit unknown state.
+    const meter = (percent, color) => v_flex().w_full().gap(3)
+      .child(h_flex().w_full().gap(2).children(Array.from({length:32}, (_,i) =>
+        div().flex_1().h(7).bg(percent != null && i < Math.round(Math.max(0,Math.min(100,percent))*32/100) ? color : c.border))))
+      .child(h_flex().w_full().justify_between().children(Array.from({length:17},(_,i)=>
+        div().w(1).h(i%4===0 ? 5 : 2).bg(i%4===0 ? c.muted : c.border))));
+    const metric = (name, value, suffix, color, percent) => v_flex().w_full().gap(5)
+      .child(h_flex().w_full().items_center().justify_between()
+        .child(label(name,c.muted))
+        .child(h_flex().items_center().gap(4)
+          .child(text(value == null ? '—' : value,18,value == null ? c.dim : color).font_semibold())
+          .child(text(value == null ? 'NO SIGNAL' : '% '+suffix.toUpperCase(),8,c.dim))))
+      .child(meter(percent,color))
+      .child(h_flex().w_full().justify_between()
+        .children(['0','25','50','75','100'].map(n=>text(n,7,c.dim))));
     const row = (name, value, color=c.muted) => h_flex().w_full().justify_between().gap(10)
       .child(text(name,10,c.dim)).child(text(value,10,color).min_w(0).truncate());
 
     return v_flex().id('claude-status-root').size_full().bg(c.bg).border(1).border_color(c.border)
-      .rounded(12).p(14).gap(10).font_family('Geist Mono').overflow_y_scrollbar()
+      .rounded(4).p(10).gap(7).font_family('Geist Mono').overflow_hidden()
       .child(h_flex().w_full().items_center().justify_between()
-        .child(h_flex().gap(7).items_center().child(dot(c.green,working)).child(text('HERDR / TELEMETRY',10,c.text).font_semibold()))
+        .child(h_flex().gap(7).items_center().child(dot(c.green,working)).child(text('HERDR  /  TELEMETRY',10,c.text).font_semibold()))
         .child(div().id('status-close').size(18).flex().items_center().justify_center().cursor_pointer()
           .text_color(c.dim).hover(s=>s.text_color(c.text)).tooltip('Hide status panel')
           .on_click(()=>run('layout.hide',{id:'agent-status'}))
           .child(svg('mods/workspace-chrome/panel-right.svg').size(12))))
-      .child(h_flex().id('session-signal-banner').w_full().h(58).flex_none()
-        .px(12).bg(c.inset).border(1).border_color(c.border).rounded(8)
+      .child(h_flex().id('session-signal-banner').w_full().h(42).flex_none()
+        .px(10).bg(c.inset).border_l(2).border_color(stateColor)
         .items_center().justify_between().gap(12)
         .child(h_flex().items_center().gap(9)
           .child(div().w(2).h(24).rounded(1).bg(stateColor)
@@ -308,13 +316,13 @@ export default class ClaudeStatus extends View {
               .bg(i%3 === 0 ? c.dim : stateColor)
               .when(working,el=>el.loop('height',{from:4+(i%3)*2,to:height,period:880+i*137})
                 .loop('opacity',{from:0.35,to:1,period:1150+i*93}))))))
-      .child(card().bg(c.inset).gap(8)
+      .child(card().gap(8)
         .child(h_flex().w_full().justify_between().items_center()
-          .child(label(lead?.app === 'codex' ? 'CODEX // SESSION' : 'ACTIVE SESSION',c.green))
+          .child(label(lead?.app === 'codex' ? '01 / CODEX SESSION' : '01 / ACTIVE SESSION',c.green))
           .child(badge(state.label.toUpperCase(),stateColor)))
-        .child(div().w_full().text_size(14).font_semibold().text_color(c.text).child(title))
+        .child(div().w_full().text_size(14).font_semibold().truncate().text_color(c.text).child(title))
         .child(text(folder(cwd,home()),9,c.muted).w_full().truncate().tooltip(cwd ?? ''))
-        .child(h_flex().w_full().pt(10).border_t(1).border_color(c.border).items_center().justify_between().gap(8)
+        .child(h_flex().w_full().pt(6).border_t(1).border_color(c.border).items_center().justify_between().gap(8)
           .child(h_flex().id('codex-model-picker').min_w(0).gap(6).items_center().px(3).py(4).rounded(4)
             .when(lead?.app === 'codex', el => el.cursor_pointer().hover(s=>s.bg(c.border))
               .tooltip('选择当前会话的模型').on_click((_e,cx)=>this.togglePicker('model',lead.address,cx)))
@@ -339,35 +347,35 @@ export default class ClaudeStatus extends View {
             .when(!codex?.models?.length, el=>el.child(text('模型目录尚未就绪',10,c.dim)))
         )))
       .child(card()
-        .child(heading('CAPACITY',label('LIVE',c.green)))
-        .child(h_flex().w_full().gap(7)
+        .child(heading('02 / CAPACITY',label(context || weekly !== null ? 'TELEMETRY' : 'AWAITING DATA',c.dim)))
+        .child(v_flex().w_full().gap(7)
           .child(metric('CONTEXT',context?.percent ?? null,'used',c.cyan,context?.percent ?? null))
           .child(metric('WEEKLY',weekly,'left',c.green,weekly)))
         .when(fiveHour !== null, el=>el.child(row('5-hour remaining',`${fiveHour}%`,c.green)))
         .when(Boolean(codex?.weekly?.resetsAt), el=>el.child(row('Weekly reset',new Date(codex.weekly.resetsAt*1000).toLocaleDateString('en-US',{month:'short',day:'numeric'}))))
-        .when(Boolean(codex?.error),el=>el.child(text(codex.error,9,c.amber)))
+        .when(Boolean(codex?.error),el=>el.child(text(codex.error,8,c.muted)))
         .when(isKimi,el=>el.child(text(this.limitsLoading ? 'Refreshing…' : '↻ Refresh limits',9,c.green)
           .id('refresh-kimi-limits').cursor_pointer().on_click((_e,cx)=>this.refreshLimits(cx)))))
       .child(card()
-        .child(heading('RUNTIME',badge(working ? 'RUNNING' : state.label.toUpperCase(),stateColor)))
+        .child(heading('03 / RUNTIME',label(working ? 'ACTIVE' : 'STANDBY',stateColor)))
         .child(h_flex().w_full().gap(7)
           .child(v_flex().flex_1().gap(5).child(label('TURN')).child(text(elapsed,18,c.cyan)))
-          .child(v_flex().flex_1().gap(5).child(label('AGENTS')).child(text(String(list.length).padStart(2,'0'),18,c.green))))
+          .child(v_flex().flex_1().border_l(1).border_color(c.border).pl(12).gap(5).child(label('AGENTS')).child(text(String(list.length).padStart(2,'0'),18,c.green))))
         .child(h_flex().w_full().pt(9).border_t(1).border_color(c.border).justify_between().gap(8)
           .child(text(branch ? `⑂ ${branch}` : 'Git',10,c.muted).min_w(0).truncate())
           .child(text(this.git ? (this.git.changed ? `${this.git.changed} changed` : 'Clean') : branch ? '' : 'No repository',9,this.git?.changed ? c.amber : c.dim)))
         .when(Boolean(this.git?.ahead || this.git?.behind),el=>el.child(row('Sync',`↑ ${this.git.ahead}  ↓ ${this.git.behind}`))))
       .child(v_flex().w_full().gap(7)
-        .child(h_flex().w_full().justify_between().child(label('CONNECTED')).child(label(String(list.length).padStart(2,'0'))))
-        .children(list.map(agent=>h_flex().id(`status-agent-${agent.address}`).w_full().items_center().gap(8)
-          .px(10).py(9).bg(c.card).border(1).border_color(c.border).rounded(6).cursor_pointer()
+        .child(h_flex().w_full().justify_between().child(label('04 / CONNECTED',c.muted)).child(label(String(list.length).padStart(2,'0'))))
+        .max_h(90).overflow_y_scrollbar().children(list.map(agent=>h_flex().id(`status-agent-${agent.address}`).w_full().items_center().gap(8)
+          .px(8).py(8).bg(c.inset).border_l(2).border_color(agent.focused ? c.green : c.border).cursor_pointer()
           .hover(s=>s.bg(c.border)).on_click(()=>run('pane.focus',{pane:agent.pane}))
           .child(dot(agent.status==='working' ? c.green : agent.status==='blocked' ? c.amber : c.dim,agent.status==='working'))
           .child(text(agent.program?.name ?? 'Agent',10,c.text).flex_1())
           .child(text(statusInfo(agent.status).label.toLowerCase(),9,c.muted)))))
       .child(div().flex_1())
       .child(h_flex().w_full().items_center().justify_between().pt(8).border_t(1).border_color(c.border)
-        .child(h_flex().gap(5).items_center().child(dot(c.green)).child(label('LOCAL / LIVE',c.green)))
-        .child(text('HERDR + CODEX',8,c.dim)));
+        .child(h_flex().gap(5).items_center().child(dot(c.green)).child(label(space?.machine ? 'REMOTE / LINK' : 'LOCAL / LINK',c.green)))
+        .child(text('SYS / '+String(list.length).padStart(2,'0'),8,c.dim)));
   }
 }
