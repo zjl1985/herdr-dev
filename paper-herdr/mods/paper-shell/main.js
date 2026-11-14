@@ -1,7 +1,7 @@
 import { View, div, svg, image } from 'gpui-kit';
 import { h_flex, v_flex } from 'gpui-base';
-import { agents, panes, props, spaces, theme, run, home, window as win } from 'herdr';
-import { UI, MONO, tx, cap, mono, icon, dot, shown, statusColor } from './ui.js';
+import { agents, panes, props, spaces, theme, run, home, layout, settings, window as win } from 'herdr';
+import { UI, tx, cap, mono, icon, dot, shown, statusColor } from './ui.js';
 
 const short = (s) => (s && s.startsWith(home()) ? '~' + s.slice(home().length) : s ?? '');
 const stop = (_e, cx) => cx.stop_propagation();
@@ -89,7 +89,7 @@ export default class PaperShell extends View {
         .child(tx(sp?.name ?? 'No space', 17, t.foreground).font_weight(500).truncate().mt(4))
         .child(mono(short(sp?.folder) || '—', 10, t.muted).truncate())
         .when(Boolean(branch), (el) => el.child(h_flex().mt(6)
-          .child(h_flex().h(20).px(7).gap(5).items_center().rounded(6).border(1).border_color(t.border)
+          .child(h_flex().h(20).px(7).gap(5).items_center().rounded(99).bg(t.raised)
             .child(div().size(5).rounded(5).bg(t.accent))
             .child(mono(branch, 10, t.foreground).max_w(130).truncate())))))
       .child(div().h(1).mx(14).my(12).flex_none().bg(t.border))
@@ -99,7 +99,7 @@ export default class PaperShell extends View {
         return h_flex().id('paper-nav-tab-' + tb.id).h(30).px(8).gap(8).items_center().rounded(8)
           .bg(tb.active ? t.raised : '#00000000')
           .cursor_pointer().hover((s) => s.bg(t.hover)).on_click(() => run('tab.select', { id: tb.id }))
-          .child(mono(String(tb.index ?? '').padStart(2, '0'), 10, tb.active ? t.accent : t.dim).w(16))
+          .child(mono(String(tb.index ?? '').padStart(2, '0'), 10, tb.active ? t.muted : t.dim).w(16))
           .child(tx(tb.named ? tb.name : tb.status && tb.status !== 'idle' ? tb.status : 'Terminal', 12.5, tb.active ? t.foreground : t.muted)
             .font_weight(tb.active ? 500 : 400).flex_1().min_w(0).truncate())
           .when(tb.status === 'working' || tb.status === 'blocked', (el) => el.child(dot(t, tb.status, 6)))
@@ -139,6 +139,13 @@ export default class PaperShell extends View {
   tabs(t) {
     const sp = spaces().find((s) => s.active);
     const w = win();
+    const root = layout();
+    const zoom = settings()?.zoom || 1;
+    // Same rule as the shipped tabs mod / zero-herdr: macOS traffic lights
+    // sit in this 42px bar at [12, 16], and need traffic_lights[0] + 64 px.
+    const lightsPadding = w?.platform === 'macos' && w.titlebar === 'none' && !w.fullscreen && root?.traffic_lights
+      ? Math.max(10, (root.traffic_lights[0] + 64) / zoom)
+      : 10;
     const toggle = (id, label, node, tip) => {
       const on = shown(node);
       return h_flex().id(id).h(24).px(9).gap(6).items_center().rounded(7)
@@ -148,24 +155,23 @@ export default class PaperShell extends View {
         .on_mouse_down('left', stop)
         .on_click(() => run('layout.toggle', { id: node }))
         .child(div().size(5).rounded(5).bg(on ? t.accent : t.input))
-        .child(cap(label, on ? t.foreground : t.muted, 9.5));
+        .child(cap(label, on ? t.foreground : t.muted, 12));
     };
-    return h_flex().size_full().items_center().gap(6).pl(2).pr(2).font_family(UI)
+    return h_flex().size_full().items_center().gap(6).pl(lightsPadding).pr(10).font_family(UI)
       .child(h_flex().flex_1().min_w(0).h_full().items_center().gap(4).overflow_x_scroll()
         .children((sp?.tabs ?? []).map((tb) =>
-          h_flex().id('paper-tab-' + tb.id).h(28).px(11).gap(8).items_center().flex_none().rounded(9)
+          h_flex().id('paper-tab-' + tb.id).h(28).px(11).gap(8).items_center().flex_none().rounded(10)
             .bg(tb.active ? t.surface : '#00000000')
-            .border(1).border_color(tb.active ? t.border : '#00000000')
             .when(tb.active, (el) => el.shadow_sm())
             .cursor_pointer().hover((s) => s.bg(tb.active ? t.surface : t.hover))
             .on_mouse_down('left', stop)
             .on_click(() => run('tab.select', { id: tb.id }))
-            .child(mono(String(tb.index).padStart(2, '0'), 10, tb.active ? t.accent : t.dim))
+            .child(mono(String(tb.index).padStart(2, '0'), 10, tb.active ? t.muted : t.dim))
             .child(tx(tb.named ? tb.name : 'Terminal', 12.5, tb.active ? t.foreground : t.muted)
               .font_weight(tb.active ? 500 : 400).max_w(160).truncate())
             .when(tb.status === 'working' || tb.status === 'blocked', (el) => el.child(dot(t, tb.status, 6)))))
         .child(iconButton(t, 'paper-tab-new', 'plus', 'New tab  ·  Ctrl+Shift+T', 'tab.new', {}, { size: 26 })))
-      .child(h_flex().h(30).px(3).gap(2).items_center().rounded(10).bg(t.raised).border(1).border_color(t.border).flex_none()
+      .child(h_flex().h(30).px(3).gap(2).items_center().rounded(16).bg(t.raised).flex_none()
         .child(toggle('paper-toggle-nav', 'Nav', 'sidebar', 'Sidebar  ·  Ctrl+Shift+B'))
         .child(toggle('paper-toggle-files', 'Files', 'panel', 'Files panel'))
         .child(toggle('paper-toggle-widgets', 'Widgets', 'widgets', 'Widgets column')))
