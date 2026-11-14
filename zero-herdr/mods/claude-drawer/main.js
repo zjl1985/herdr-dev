@@ -36,7 +36,7 @@ const ROW = 32;
 const TILE = 26;
 const MONO = "Geist Mono";
 const CLAUDE_ICON = "mods/claude-drawer/claude-code.svg";
-const ZERO_MARK = "mods/claude-drawer/zero-mark.svg";
+const CAT_LOGO = "mods/claude-drawer/cat.png";
 
 function withAlpha(color, alphaHex) {
   if (typeof color !== "string" || !color.startsWith("#")) return color;
@@ -539,7 +539,7 @@ export default class ClaudeDrawer extends View {
       .transition("opacity", { duration: FADE_MS, easing: "ease-out" })
       .transition("left", { duration: FADE_MS + 40, easing: "ease-out" });
 
-    // 1. 顶部：Zero 几何徽记 + 品牌标题 + 搜索 / 侧栏切换
+    // 1. 顶部：猫咪徽记 + 品牌标题 + 搜索 / 侧栏切换
     const brandEdge = div()
       .size(TILE)
       .rounded(7)
@@ -549,7 +549,7 @@ export default class ClaudeDrawer extends View {
       .flex()
       .items_center()
       .justify_center()
-      .child(svg(ZERO_MARK).size(15).text_color(t.accent));
+      .child(image(CAT_LOGO).w(22).h(22).flex_none());
 
     const brandBody = h_flex()
       .w_full()
