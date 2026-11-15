@@ -8,6 +8,7 @@ import { palette, statusInfo } from "./zero-theme.js";
 import { motionOn, programIcon } from "./zero-kit.js";
 import { attemptSwitch, invalidateSwitch, noteCodexData, switchState } from "./switcher.js";
 import { PICK_KEY, SWITCH_KEY, PICKER_KEY } from "./switch-shared.js";
+import { cardMaterial } from "./material.js";
 
 // C10: a hidden panel stops reading — render() stamps lastRender, and every
 // timer skips work once the panel has not rendered for this long.
@@ -27,6 +28,7 @@ const TZ_LABEL = (() => {
 
 function programKey(lead) {
   const key = lead?.app ?? lead?.program?.key ?? null;
+  if (key === "kiro-cli" || lead?.program?.key === "kiro") return "kiro";
   return key === "agy" || lead?.program?.key === "antigravity" ? "antigravity" : key;
 }
 
@@ -440,10 +442,12 @@ export default class ZeroHerdr extends View {
     const limitsData = !space?.machine ? this.limits?.data ?? {} : {};
     const isKimi = adapter === "kimi-code";
     const context = data.context ?? (isKimi ? usageCh.data : null);
-    const weekly = data.weekly?.left ?? (isKimi ? limitsData.weekly?.left : null);
-    const fiveHour = data.fiveHour?.left ?? (isKimi ? limitsData.fiveHour?.left : null);
-    const weeklyReset = data.weekly?.resetsAt ?? (isKimi ? limitsData.weekly?.resetsAt : null);
-    const credits = data.credits ?? null;
+    const isKiro = adapter === "kiro";
+    const weekly = isKiro ? null : data.weekly?.left ?? (isKimi ? limitsData.weekly?.left : null);
+    const fiveHour = isKiro ? null : data.fiveHour?.left ?? (isKimi ? limitsData.fiveHour?.left : null);
+    const weeklyReset = isKiro ? null : data.weekly?.resetsAt ?? (isKimi ? limitsData.weekly?.resetsAt : null);
+    const creditValue = data.creditUsage?.used ?? data.credits;
+    const credits = creditValue != null && Number.isFinite(Number(creditValue)) && Number(creditValue) >= 0 ? Number(creditValue) : null;
     const quotaStale =
       (isKimi && this.limits && (!this.limits.account || this.limits.readAt == null || Date.now() - this.limits.readAt > STALE_AFTER)) ||
       this.isStale(active ?? {});
@@ -454,7 +458,7 @@ export default class ZeroHerdr extends View {
       codex: adapter === "codex" ? data : null,
       kiro: adapter === "kiro" ? data : null,
       agy: adapter === "antigravity" ? data : null,
-      context, weekly, fiveHour, weeklyReset, credits, isKimi,
+      context, weekly, fiveHour, weeklyReset, credits, isKimi, isKiro,
       git: gitCh,
       working,
       gitKey: this.gitKey,
@@ -475,6 +479,7 @@ export default class ZeroHerdr extends View {
       cx.spawn((cx) => this.refreshGit(cx));
     }
     const p = palette(), m = this.model();
+    const material = cardMaterial(p);
     const { space, tab, lead, pane } = m;
     const list = agents().filter(a => a.space === space?.id);
     const info = statusInfo(lead?.status);
@@ -495,7 +500,9 @@ export default class ZeroHerdr extends View {
     const dot = (color, size = 5, pulse = false) => div().size(size).flex_none().rounded_full().bg(color)
       .when(pulse && motionOn(), el => el.loop('opacity', { from: 0.35, to: 1, period: 1600 }));
     const icon = (name, size = 14, color = p.muted) => svg('mods/zero-ui/icons/' + name + '.svg').size(size).flex_none().text_color(color);
-    const card = id => v_flex().id(id).w_full().flex_none().p(14).gap(12).rounded(16).bg(p.bg);
+    const card = id => v_flex().id(id).w_full().flex_none().relative().p(14).gap(12).rounded(18)
+      .bg(material.top)
+      .border(1).border_color(material.edge).shadow_md();
     const heading = (name, right = null) => h_flex().w_full().items_center().gap(7)
       .child(dot(p.accent, 4)).child(txt(name, 12).font_weight(500)).child(div().flex_1())
       .when(Boolean(right), el => el.child(right));
@@ -524,7 +531,8 @@ export default class ZeroHerdr extends View {
           .child(valueText(value, 27, p.text)).child(txt('used', 10.5, p.muted)));
     };
     const chip = (kind, value, caption) => h_flex().id('codex-' + kind + '-picker').min_w(0).flex_1().h(34).px(9).gap(6)
-      .items_center().rounded(8).bg(pickerOpen(kind) ? p.selected : p.inset)
+      .items_center().rounded(8).border(1).border_color(p.line)
+      .bg(pickerOpen(kind) ? p.selected : p.inset)
       .when(isCodex, el => el.cursor_pointer().hover(s => s.bg(p.hover)).tooltip(caption)
         .on_click((_e, cx) => this.togglePicker(kind, lead.address, cx)))
       .child(txt(value, 11.5).min_w(0).flex_1().truncate())
@@ -538,7 +546,8 @@ export default class ZeroHerdr extends View {
           localStorage.setItem('zero.reducedMotion', motionOn() ? '1' : '0'); cx.notify();
         }))
         .child(action('status-close', 'panel-right', 'Hide status panel', () => run('layout.hide', { id: 'zero-herdr' }))))
-      .child(h_flex().id('session-signal-banner').w_full().h(34).px(10).rounded(9).bg(p.inset).items_center().gap(7)
+      .child(h_flex().id('session-signal-banner').w_full().h(34).px(10).rounded(9).border(1).border_color(p.line)
+        .bg(p.inset).items_center().gap(7)
         .child(dot(stateColor, 5, working)).child(txt(lead ? info.label : 'No agent', 11, stateColor).font_weight(500))
         .when(Boolean(elapsed), el => el.child(mono(elapsed, 10)))
         .child(div().flex_1())
@@ -558,7 +567,7 @@ export default class ZeroHerdr extends View {
     if (sessionNotice) session.child(txt(sessionNotice, 11, m.sessionError ? p.blocked : p.muted));
 
     const hasContext = percent(m.context?.percent) != null;
-    const hasQuota = m.fiveHour != null || m.weekly != null || m.credits != null;
+    const hasQuota = m.fiveHour != null || m.weekly != null;
     const metrics = card('metrics-card')
       .when(hasContext, el => el.child(h_flex().w_full().items_center().gap(16)
         .child(ring(m.context.percent))
@@ -582,13 +591,21 @@ export default class ZeroHerdr extends View {
     };
     if (m.fiveHour != null) metrics.child(quotaRow('quota-5h', '5-hour left', m.fiveHour, '5h'));
     if (m.weekly != null) metrics.child(quotaRow('quota-weekly', 'Weekly left', m.weekly, '7d'));
-    if (m.credits != null) metrics.child(h_flex().w_full().justify_between().items_baseline()
-      .child(txt('Credits used', 12)).child(mono(Number(m.credits).toFixed(2), 21, p.text)));
     if (m.weeklyReset != null) metrics.child(h_flex().w_full().gap(6).items_center().pt(2)
       .child(txt('Weekly reset', 10.5, p.muted)).child(div().flex_1())
       .child(mono(new Date(m.weeklyReset * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), 10.5)
         .tooltip(new Date(m.weeklyReset * 1000).toString() + ' · ' + TZ_LABEL)));
     if (m.quotaStale) metrics.child(txt('Cached reading · waiting for refresh', 10.5, p.muted));
+
+    const creditCard = card('kiro-credits-card')
+      .child(heading('Kiro credits', mono('积分', 10.5)))
+      .child(txt('本会话已用', 11, p.muted))
+      .child(h_flex().w_full().items_baseline().gap(7)
+        .child(txt(m.credits == null ? '—' : m.credits.toFixed(2), 32).font_weight(500))
+        .child(txt('credits', 12, p.muted)))
+      .child(txt(m.credits == null ? '暂无积分读数' : '按本会话的实际消耗累计', 10.5, p.muted))
+      .child(div().w_full().h(1).bg(p.line))
+      .child(txt('账户剩余积分尚未读取', 10.5, p.muted));
 
     const git = m.git.state === 'ready' ? m.git.data : null;
     const branch = git?.branch ?? pane?.branch;
@@ -614,9 +631,10 @@ export default class ZeroHerdr extends View {
           .child(txt(st.label, 10.5, p.muted));
       })));
     return v_flex().id('zero-herdr-root').size_full().font_family(UI).overflow_hidden()
-      .child(v_flex().id('zero-herdr-body').w_full().flex_1().min_h(0).overflow_y_scrollbar().gap(10)
+      .child(v_flex().id('zero-herdr-body').w_full().flex_1().min_h(0).overflow_y_scrollbar().px(6).pb(6).gap(14)
         .child(session)
         .when(hasContext || hasQuota || m.quotaStale, el => el.child(metrics))
+        .when(m.isKiro, el => el.child(creditCard))
         .when(m.git.state !== 'idle' || Boolean(branch), el => el.child(workspace))
         .when(list.length > 1, el => el.child(agentCard)));
   }

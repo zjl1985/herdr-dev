@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
 import * as data from '../mods/zero-herdr/data.js';
+import { cardMaterial } from '../mods/zero-herdr/material.js';
 const root = fileURLToPath(new URL('../', import.meta.url));
 function load(file, globals, tail) {
   const source = fs.readFileSync(root + file, 'utf8').replace(/^import .*;$/gm, '').replace(/^export default /gm, '').replace(/^export /gm, '');
@@ -19,7 +20,7 @@ function panel() {
   const children = [];
   const el = new Proxy({}, { get: (_, key) => key === 'when' ? (b, yes, no) => { if (b) yes(el); else if (no) no(el); return el; } : key === 'child' ? (...values) => { children.push(...values); return el; } : () => el });
   const context = load('mods/zero-herdr/main.js', {
-    ...data, View: class {}, Date, console, div: () => el, svg: () => el, h_flex: () => el, v_flex: () => el,
+    ...data, cardMaterial, Background: { linear_gradient: () => ({}) }, View: class {}, Date, console, div: () => el, svg: () => el, h_flex: () => el, v_flex: () => el,
     spaces: () => [space], agents: () => [agent()], panes: () => [{ pane: current.address, cwd: current.cwd }], focused: () => ({ pane: current.address }),
     layout: () => ({ id: 'zero-herdr', hidden: false }), appHome: () => '/tmp', home: () => '/home',
     invalidateSwitch: () => {}, noteCodexData: () => { confirmations++; return true; }, closeOverlay: () => {},
@@ -68,6 +69,29 @@ test('late Git result does not overwrite the next workspace', async () => {
   p.switchTo({ address: 'B', cwd: '/b' }); await p.view.refreshGit(p.cx);
   a.resolve({ code: 0, stdout: '# branch.head old-A' }); await pending;
   assert.equal(p.view.channel('git').data, null);
+});
+test('Kiro credit card uses decimal session spend and never percentage quotas', async () => {
+  const p = panel(); p.switchTo({ app: 'kiro-cli' });
+  p.context.exec = async () => ({ stdout: JSON.stringify({ creditUsage: { used: 1234.56, unit: 'credits', scope: 'session' }, context: { percent: 42 }, weekly: { left: 50 } }) });
+  await p.view.refreshSession(p.cx);
+  assert.equal(p.view.model().credits, 1234.56);
+  assert.equal(p.view.model().weekly, null);
+  p.view.render(p.cx);
+  assert.ok(p.children.includes('Kiro credits'));
+  assert.ok(p.children.includes('1234.56'));
+  assert.ok(p.children.includes('本会话已用'));
+  assert.ok(!p.children.includes('Available quota'));
+  assert.ok(p.children.includes('Context'));
+});
+test('Kiro distinguishes zero credits from unavailable credits', async () => {
+  for (const value of [0, null]) {
+    const p = panel(); p.switchTo({ app: 'kiro' });
+    p.context.exec = async () => ({ stdout: JSON.stringify({ credits: value }) });
+    await p.view.refreshSession(p.cx); p.view.render(p.cx);
+    assert.ok(p.children.includes(value === 0 ? '0.00' : '暂无积分读数'));
+    assert.ok(p.children.includes('账户剩余积分尚未读取'));
+    assert.ok(!p.children.includes('Available quota'));
+  }
 });
 function switcher() {
   const state = new Map(); let writes = 0;

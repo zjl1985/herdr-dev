@@ -69,7 +69,9 @@ function parseLine(usage, line) {
   if (payload?.type === 'usage_summary') {
     for (const turn of payload.promptTurnSummaries || []) {
       const value = Number(turn?.usage);
-      if (turn?.unit === 'credit' && Number.isFinite(value)) usage.credits = (usage.credits ?? 0) + value;
+      if (turn?.unit === 'credit' && turn.usage != null && turn.usage !== '' && Number.isFinite(value) && value >= 0) {
+        usage.credits = (usage.credits ?? 0) + value;
+      }
     }
   }
 }
@@ -122,6 +124,8 @@ function readStatus(cwd, title, previous = null) {
     model: session.contextSnapshotModelDisplay?.display ?? session.modelId ?? null,
     context: usage.percent != null ? { percent: usage.percent } : null,
     credits: usage.credits != null ? Math.round(usage.credits * 100) / 100 : null,
+    // These records meter prompt turns in this session, not account balance.
+    creditUsage: { unit: 'credits', scope: 'session', used: usage.credits != null ? Math.round(usage.credits * 100) / 100 : null },
     updatedAt: usage.updatedAt ?? session.lastModifiedAt ?? null,
     cache,
   };
