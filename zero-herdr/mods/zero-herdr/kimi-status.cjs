@@ -110,7 +110,10 @@ async function readStatus() {
       signal: controller.signal,
     });
     if (!response.ok) throw new Error(`Kimi quota request failed (${response.status})`);
-    return parseQuotas(await response.json());
+    const quotas = parseQuotas(await response.json());
+    // C09: cache ownership — which credential + endpoint produced this.
+    quotas.account = { credential: path.basename(account.credential), endpoint: account.url };
+    return quotas;
   } finally { clearTimeout(timeout); }
 }
 

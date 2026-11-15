@@ -1,5 +1,6 @@
 import { View, div, svg, image } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
+import { T, UI, MONO as ZERO_MONO } from "./zero-tokens.js";
 import {
   spaces,
   agents,
@@ -24,9 +25,9 @@ import {
 } from "herdr";
 
 const FOLD_KEY = "machines.folded";
-const FADE_MS = 170;
-const OPEN_MS = 240;
-const CLOSE_MS = 200;
+const FADE_MS = T.duration.hover;
+const OPEN_MS = T.duration.drawer;
+const CLOSE_MS = T.duration.drawer;
 const GHOST_DELAY = 70;
 const SIDEBAR_W = 268;
 const INSTANT = "claude-drawer.instant";
@@ -34,7 +35,7 @@ const INSTANT = "claude-drawer.instant";
 const EDGE = 44;
 const ROW = 32;
 const TILE = 26;
-const MONO = "Geist Mono";
+const MONO = ZERO_MONO;
 const CLAUDE_ICON = "mods/claude-drawer/claude-code.svg";
 const CAT_LOGO = "mods/claude-drawer/cat.png";
 
@@ -228,7 +229,7 @@ function tile(content, { active = false } = {}, t) {
     .flex()
     .items_center()
     .justify_center()
-    .when(active, (d) => d.bg(t.selected).border_1().border_color(t.input))
+    .when(active, (d) => d.bg(t.selected))
     .child(content);
 }
 
@@ -263,10 +264,10 @@ function sectionLabel(id, label, rightEl, onRight, t) {
     .w_full()
     .items_center()
     .justify_between()
-    .font_family(MONO)
-    .child(div().text_size(9.5).font_medium().text_color(t.dim).child(label.toUpperCase()))
+    .font_family(UI)
+    .child(div().text_size(11).font_medium().text_color(t.muted).child(label))
     .when(Boolean(rightEl), (s) => s.child(rightEl));
-  return row(id, onRight, 22, edge, body, t, { interactive: false }).mt(6);
+  return row(id, onRight, 22, edge, body, t, { interactive: false }).mt(10);
 }
 
 // 对称分割线行：收起态只显示边缘居中细线，绝不戳穿胶囊右边框；展开态自然延伸
@@ -527,12 +528,15 @@ export default class ClaudeDrawer extends View {
     const slide = onRight ? 10 : -10;
     const root = v_flex()
       .id("claude-drawer-root")
-      .when(pinned, (r) => r.w(SIDEBAR_W).h_full().flex_none().overflow_y_scrollbar())
+      // F02: a pinned drawer fills its resizable layout column (220-360px);
+      // the floating drawer keeps the 268px design width.
+      .when(pinned, (r) => r.w_full().h_full().flex_none().overflow_y_scrollbar())
       .when(!pinned, (r) => r.w(SIDEBAR_W))
       .relative()
       .pt(topPad)
       .pb(5)
-      .gap(2)
+      .gap(3)
+      .font_family(UI)
       .text_size(12.5)
       .opacity(on ? 1 : 0)
       .left(on ? 0 : slide)

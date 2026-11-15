@@ -1,0 +1,157 @@
+// Zero UI kit — shared visual primitives for Zero mods, styled only through
+// zero-theme.js (live theme()) and zero-tokens.js. Stamped into each
+// consuming mod by tools/stamp-zero-ui.mjs.
+import { div, svg, image } from "gpui-kit";
+import { h_flex, v_flex } from "gpui-base";
+import { T, UI, MONO } from "./zero-tokens.js";
+import { palette } from "./zero-theme.js";
+
+/** H04: local reduced-motion switch (no system-preference API exists in the
+ *  shell). "1" stops every looping animation; dots and bars keep their
+ *  outlines so states stay readable. */
+export function motionOn() {
+  try { return localStorage.getItem("zero.reducedMotion") !== "1"; } catch { return true; }
+}
+
+/** "#rrggbb" + two hex digits of alpha; passes through anything else. */
+export function withAlpha(color, alphaHex) {
+  if (typeof color !== "string" || !color.startsWith("#")) return color;
+  if (color.length === 7) return `${color}${alphaHex}`;
+  if (color.length === 9) {
+    const orig = parseInt(color.slice(7, 9), 16) / 255;
+    const scale = parseInt(alphaHex, 16) / 255;
+    const next = Math.round(Math.max(0, Math.min(255, orig * scale * 255)))
+      .toString(16)
+      .padStart(2, "0");
+    return `${color.slice(0, 7)}${next}`;
+  }
+  return color;
+}
+
+/** Plain text. Strings only; numbers are coerced, null/undefined render as "". */
+export function text(value, size = T.type.body, color) {
+  const p = palette();
+  return div()
+    .text_size(size)
+    .text_color(color ?? p.text)
+    .font_family(UI)
+    .child(String(value ?? ""));
+}
+
+/** Monospace text for paths, shortcuts, technical ids and metric numbers. */
+export function mono(value, size = T.type.body, color) {
+  return text(value, size, color).font_family(MONO);
+}
+
+/** Group label: 11px/500. Group titles never drop below the ladder. */
+export function label(value, color) {
+  const p = palette();
+  return text(value, T.type.label, color ?? p.dim).font_weight(500);
+}
+
+/** Auxiliary text: 10.5px. */
+export function hint(value, color) {
+  const p = palette();
+  return text(value, T.type.hint, color ?? p.muted);
+}
+
+/** A status dot; `pulse` breathes natively (no JS timer). */
+export function statusDot(color, pulse = false, size = 6) {
+  const p = palette();
+  return div()
+    .size(size)
+    .flex_none()
+    .rounded_full()
+    .bg(color ?? p.idle)
+    .when(pulse && motionOn(), (el) => el.loop("opacity", { from: 0.35, to: 1, period: T.duration.breath }));
+}
+
+/** Program icon from the app's program table; tinted glyphs take the color. */
+export function programIcon(program, size, color) {
+  if (!program?.icon) return null;
+  return program.tint
+    ? svg(program.icon).size(size).flex_none().text_color(color)
+    : image(program.icon).w(size).h(size).flex_none();
+}
+
+/** Zero's own icon (mods/zero-ui/icons/<name>.svg). */
+export function icon(name, size = T.icon.default, color) {
+  const p = palette();
+  return svg(`mods/zero-ui/icons/${name}.svg`)
+    .size(size)
+    .flex_none()
+    .text_color(color ?? p.muted);
+}
+
+/** Icon button: 24x24 hit area, 6px radius, hover/disabled states.
+ *  `opts`: { danger, disabled, size, tip }. Disabled buttons render dimmed and
+ *  never fire. */
+export function iconButton(id, name, tip, onClick, opts = {}) {
+  const p = palette();
+  const { danger = false, disabled = false, size = T.hit.button } = opts;
+  const base = div()
+    .id(id)
+    .size(size)
+    .flex_none()
+    .flex()
+    .items_center()
+    .justify_center()
+    .rounded(T.radius.control)
+    .text_color(disabled ? p.dim : danger ? p.blocked : p.dim);
+  if (disabled) {
+    return base.when(Boolean(tip), (el) => el.tooltip(tip)).child(icon(name, T.icon.default, p.dim));
+  }
+  return base
+    .cursor_pointer()
+    .hover((s) =>
+      s.bg(danger ? withAlpha(p.blocked, "1f") : p.hover).text_color(danger ? p.blocked : p.text)
+    )
+    .when(Boolean(tip), (el) => el.tooltip(tip))
+    .when(Boolean(onClick), (el) => el.on_click(onClick))
+    .child(icon(name, T.icon.default, undefined));
+}
+
+/** Section: border-t divider, label row, then content children.
+ *  `right` renders a small element aligned right in the header. */
+export function section(id, name, right = null) {
+  const p = palette();
+  return v_flex()
+    .id(id)
+    .w_full()
+    .gap(T.space.inGroup)
+    .pt(T.space.group)
+    .border_t(1)
+    .border_color(p.line)
+    .child(
+      h_flex()
+        .w_full()
+        .items_center()
+        .justify_between()
+        .child(label(name))
+        .when(Boolean(right), (el) => el.child(right))
+    );
+}
+
+/** A menu row (28px min) for popups and pickers. `selected` marks the current
+ *  value; `highlighted` is the keyboard cursor; disabled rows never fire. */
+export function menuRow(id, { selected = false, highlighted = false, disabled = false } = {}, ...children) {
+  const p = palette();
+  let row = h_flex()
+    .id(id)
+    .min_h(T.hit.menuRow)
+    .w_full()
+    .px(8)
+    .py(5)
+    .rounded(T.radius.control)
+    .items_center()
+    .gap(9)
+    .text_color(disabled ? p.dim : selected || highlighted ? p.text : p.muted);
+  if (!disabled) {
+    row = row
+      .cursor_pointer()
+      .hover((s) => s.bg(p.hover))
+      .when(highlighted, (el) => el.bg(p.hover))
+      .when(selected && !highlighted, (el) => el.bg(p.selected));
+  }
+  return row.children(children);
+}

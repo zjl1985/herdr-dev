@@ -16,7 +16,13 @@ function getConversationTitles(root, conversationIds) {
   try {
     const quote = value => "'" + value.replaceAll("'", "''") + "'";
     const query = `SELECT conversation_id,title FROM conversation_summaries WHERE conversation_id IN (${ids.map(quote).join(',')})`;
-    const rows = JSON.parse(execFileSync('sqlite3', ['-readonly', '-json', dbPath, query], { encoding: 'utf8', timeout: 2000 }) || '[]');
+    let rows;
+    try {
+      rows = JSON.parse(execFileSync('sqlite3', ['-readonly', '-json', dbPath, query], { encoding: 'utf8', timeout: 2000 }) || '[]');
+    } catch (error) {
+      if (!/unable to open database file/i.test(String(error.message ?? error))) throw error;
+      rows = JSON.parse(execFileSync('sqlite3', ['-readonly', '-json', `file:${dbPath}?immutable=1`, query], { encoding: 'utf8', timeout: 2000 }) || '[]');
+    }
     for (const row of rows) {
       if (row.conversation_id && row.title) titles.set(row.conversation_id, row.title);
     }

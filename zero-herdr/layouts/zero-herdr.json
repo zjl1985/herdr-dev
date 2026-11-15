@@ -115,7 +115,7 @@
                   },
                   "focus": {
                     "width": 1,
-                    "color": "input"
+                    "color": "ring"
                   },
                   "header": {
                     "content": {

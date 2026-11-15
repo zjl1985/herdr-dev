@@ -1,0 +1,102 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import vm from 'node:vm';
+import { fileURLToPath } from 'node:url';
+import * as data from '../mods/zero-herdr/data.js';
+const root = fileURLToPath(new URL('../', import.meta.url));
+function load(file, globals, tail) {
+  const source = fs.readFileSync(root + file, 'utf8').replace(/^import .*;$/gm, '').replace(/^export default /gm, '').replace(/^export /gm, '');
+  const context = vm.createContext({ ...globals });
+  vm.runInContext(source + '\n' + tail, context, { filename: file });
+  return context;
+}
+function deferred() { let resolve; const promise = new Promise(r => resolve = r); return { promise, resolve }; }
+function panel() {
+  let current = { address: 'A', cwd: '/a', app: 'codex' }, calls = 0, confirmations = 0;
+  const space = { id: 's', active: true, tabs: [{ id: 't', active: true }] };
+  const agent = () => ({ ...current, space: 's', tab: 't', pane: current.address, program: { name: 'Codex' } });
+  const children = [];
+  const el = new Proxy({}, { get: (_, key) => key === 'when' ? (b, yes, no) => { if (b) yes(el); else if (no) no(el); return el; } : key === 'child' ? (...values) => { children.push(...values); return el; } : () => el });
+  const context = load('mods/zero-herdr/main.js', {
+    ...data, View: class {}, Date, console, div: () => el, svg: () => el, h_flex: () => el, v_flex: () => el,
+    spaces: () => [space], agents: () => [agent()], panes: () => [{ pane: current.address, cwd: current.cwd }], focused: () => ({ pane: current.address }),
+    layout: () => ({ id: 'zero-herdr', hidden: false }), appHome: () => '/tmp', home: () => '/home',
+    invalidateSwitch: () => {}, noteCodexData: () => { confirmations++; return true; }, closeOverlay: () => {},
+    shared: () => null, setShared: () => {}, PICKER_KEY: 'picker', SWITCH_KEY: 'switch',
+    palette: () => ({}), programIcon: () => null, motionOn: () => false, statusInfo: () => ({ key: 'idle', label: 'Idle' }),
+    T: { type: {}, space: {}, radius: {}, hit: {}, icon: {}, duration: {} }, UI: '', MONO: '',
+    exec: async () => { calls++; return { stdout: JSON.stringify({ model: 'test', effort: 'high', title: current.address }) }; },
+  }, 'globalThis.Panel = ZeroHerdr;');
+  const view = Object.assign(new context.Panel(), { channels: {}, busy: {}, seq: {}, lastRender: Date.now() });
+  const cx = { notify() {}, spawn(fn) { return fn(cx); } };
+  return { view, context, cx, children, read: () => view.readCodex(space, agent(), { cwd: current.cwd }, cx), switchTo: v => { current = { ...current, ...v }; }, calls: () => calls, confirmations: () => confirmations };
+}
+test('same session is polled repeatedly and confirms unchanged fresh data', async () => {
+  const p = panel(); await p.read(); await p.read();
+  assert.equal(p.calls(), 2); assert.equal(p.confirmations(), 2);
+});
+test('failed session reads release the lock and retry', async () => {
+  const p = panel(); let n = 0;
+  p.context.exec = async () => { if (++n === 1) throw Error('offline'); return { stdout: '{"model":"test"}' }; };
+  await p.read(); assert.equal(p.view.channel('codex').state, 'error');
+  await p.read(); assert.equal(p.view.channel('codex').state, 'ready');
+});
+test('late A response cannot populate B and B retries after A settles', async () => {
+  const p = panel(), a = deferred(); p.context.exec = () => a.promise;
+  const pending = p.read(); p.switchTo({ address: 'B', cwd: '/b' }); await p.read();
+  a.resolve({ stdout: '{"model":"old-A"}' }); await pending;
+  assert.equal(p.view.channel('codex').data, null);
+  p.context.exec = async () => ({ stdout: '{"model":"new-B"}' }); await p.read();
+  assert.equal(p.view.channel('codex').data.model, 'new-B');
+});
+test('A-B-A transitions reject the first A response', async () => {
+  const p = panel(), a = deferred(); p.context.exec = () => a.promise;
+  const pending = p.read(); p.switchTo({ address: 'B', cwd: '/b' }); await p.read();
+  p.switchTo({ address: 'A', cwd: '/a' }); await p.read();
+  a.resolve({ stdout: '{"model":"stale-A"}' }); await pending;
+  assert.equal(p.view.channel('codex').data, null);
+});
+test('render with model and reasoning data succeeds and shell focus clears data immediately', async () => {
+  const p = panel(); await p.read(); assert.doesNotThrow(() => p.view.render(p.cx));
+  p.switchTo({ app: 'shell', address: 'B', cwd: '/b' });
+  assert.equal(p.view.model().codex, null);
+});
+test('late Git result does not overwrite the next workspace', async () => {
+  const p = panel(), a = deferred(); p.context.exec = () => a.promise;
+  const pending = p.view.refreshGit(p.cx);
+  p.switchTo({ address: 'B', cwd: '/b' }); await p.view.refreshGit(p.cx);
+  a.resolve({ code: 0, stdout: '# branch.head old-A' }); await pending;
+  assert.equal(p.view.channel('git').data, null);
+});
+function switcher() {
+  const state = new Map(); let writes = 0;
+  const context = load('mods/zero-herdr/switcher.js', { ...data, Date, PICK_KEY: 'pick', SWITCH_KEY: 'switch',
+    shared: k => state.get(k), setShared: (k, v) => state.set(k, v), notify() {},
+    hc: async ([command]) => { if (command === 'get') return { stdout: '{"status":{"app":"codex"}}' }; if (command === 'read') return { stdout: '› Ask Codex to do anything' }; writes++; return { code: 0 }; },
+  }, 'globalThis.api = { attemptSwitch, invalidateSwitch, noteCodexData };');
+  return { context, api: context.api, state, writes: () => writes, pick: { seq: 1, address: 'A', kind: 'model', value: 'test' } };
+}
+test('cancellation during screen read prevents all keyboard injection', async () => {
+  const s = switcher(), d = deferred(); let writes = 0;
+  s.context.hc = async ([cmd]) => { if (cmd === 'get') return { stdout: '{"status":{"app":"codex"}}' }; if (cmd === 'read') return d.promise; writes++; return { code: 0 }; };
+  const pending = s.api.attemptSwitch(s.pick); await new Promise(setImmediate);
+  s.api.invalidateSwitch('target changed'); d.resolve({ stdout: '› Ask Codex to do anything' }); await pending;
+  assert.equal(writes, 0); assert.equal(s.state.get('switch').state, 'error');
+});
+test('draft refuses keys; fresh confirmation changes awaiting to success; duplicates are ignored', async () => {
+  const s = switcher(); await s.api.attemptSwitch(s.pick); await s.api.attemptSwitch(s.pick);
+  assert.equal(s.writes(), 1); assert.equal(s.state.get('switch').state, 'awaiting');
+  assert.equal(s.api.noteCodexData({ model: 'test' }, 'A'), true);
+  assert.equal(s.state.get('switch').state, 'success');
+  const d = switcher(); d.context.hc = async ([cmd]) => ({ stdout: cmd === 'get' ? '{"status":{"app":"codex"}}' : '› my unsent draft' });
+  await d.api.attemptSwitch(d.pick); assert.equal(d.writes(), 0); assert.equal(d.state.get('switch').state, 'error');
+});
+test('file list renders read failures and loading status', () => {
+  const labels = [];
+  const el = new Proxy({}, { get: (_, key) => key === 'when' ? (b, yes, no) => { if (b) yes(el); else if (no) no(el); return el; } : key === 'child' ? (...v) => { labels.push(...v); return el; } : () => el });
+  const ctx = load('mods/files/main.js', { View: class {}, div: () => el, svg: () => el, h_flex: () => el, v_flex: () => el, theme: () => ({}), T: { hit: {} }, UI: '', spaces: () => [{active: true, id:'s', folder:'/repo'}], panes: () => [], focused: () => ({}), }, 'globalThis.Files = Files; globalThis.keyForTest = key;');
+  const view = Object.assign(new ctx.Files(), { entries: new Map(), marks: {}, folders: new Set(), context: { key: ctx.keyForTest() }, root: '/repo', error: 'Permission denied' });
+  view.render({}); assert.ok(labels.includes('Permission denied'));
+  labels.length = 0; view.error = null; view.loading = true; view.render({}); assert.ok(labels.includes('Loading files…'));
+});

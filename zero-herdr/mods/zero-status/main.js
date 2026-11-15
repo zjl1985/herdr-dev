@@ -2,7 +2,7 @@ import { View, div, svg } from "gpui-kit";
 import { h_flex } from "gpui-base";
 import { spaces, agents, panes, focused, layout, home, theme, run, window as appWindow, keys } from "herdr";
 
-const MONO = "Geist Mono";
+import { UI, MONO } from "./zero-tokens.js";
 
 function findNode(node, id) {
   if (node?.id === id) return node;
@@ -129,11 +129,11 @@ export default class ZeroStatus extends View {
       "zero-status-agents",
       t,
       blockedAgents.length > 0
-        ? "Jump to agent waiting for input"
+        ? "All spaces · jump to the agent waiting for input"
         : workingAgents.length > 0
-          ? "Cycle active agents"
+          ? "All spaces · cycle working agents"
           : total > 0
-            ? "Cycle agents"
+            ? "All spaces · cycle agents"
             : "No active agents",
       () => {
         const target = blockedAgents[0] ?? doneAgents[0];
@@ -199,8 +199,8 @@ export default class ZeroStatus extends View {
       .bg(t.chrome)
       .border_t(1)
       .border_color(t.border)
-      .font_family(MONO)
-      .text_size(10.5)
+      .font_family(UI)
+      .text_size(11)
       .text_color(t.muted)
       .child(
         pill(
@@ -211,7 +211,7 @@ export default class ZeroStatus extends View {
           () => run("mod.open", { name: "picker" })
         )
           .child(
-            svg(`mods/workspace-chrome/${space?.machine ? "server" : "monitor"}.svg`)
+            svg(`mods/zero-ui/icons/${space?.machine ? "server" : "monitor"}.svg`)
               .size(11.5)
               .text_color(t.dim)
           )
@@ -224,7 +224,7 @@ export default class ZeroStatus extends View {
             pill("zero-status-branch", t, "Toggle Git changes", () =>
               this.toggleSidePanel("changes")
             )
-              .child(svg("mods/workspace-chrome/branch.svg").size(11.5).text_color(t.accent))
+              .child(svg("mods/zero-ui/icons/branch.svg").size(11.5).text_color(t.accent))
               .child(div().max_w(140).truncate().text_color(t.muted).child(branch))
           )
       )

@@ -39,7 +39,7 @@ export default class ZeroHerdrToggle extends View {
       .cursor_pointer()
       .text_color(t.dim)
       .hover((style) => style.bg(t.hover).text_color(t.foreground))
-      .tooltip("Show workspace status")
+      .tooltip("All spaces' agent status · open the panel")
       .on_click(() => run("layout.show", { id: "zero-herdr" }))
       .child(
         div()
@@ -48,6 +48,6 @@ export default class ZeroHerdrToggle extends View {
           .bg(color)
           .when(status === "working", (el) => el.loop("opacity", { from: 0.35, to: 1, period: 1600 }))
       )
-      .child(svg("mods/workspace-chrome/panel-right.svg").size(15));
+      .child(svg("mods/zero-ui/icons/panel-right.svg").size(15));
   }
 }

@@ -41,11 +41,22 @@ function readModels() {
       .map(m => ({ id: m.slug, name: m.display_name, efforts: (m.supported_reasoning_levels || []).map(r => r.effort) }));
   } catch { return []; }
 }
+function queryThreads(dbPath, query) {
+  // A running Codex holds the WAL -shm, so a plain -readonly open fails with
+  // CANTOPEN. immutable=1 skips shared memory (limitation: WAL frames that
+  // are not checkpointed yet stay invisible until the next checkpoint).
+  try {
+    return JSON.parse(execFileSync('sqlite3', ['-readonly', '-json', dbPath, query], { encoding: 'utf8', timeout: 2500 }) || '[]');
+  } catch (error) {
+    if (!/unable to open database file/i.test(String(error.message ?? error))) throw error;
+    return JSON.parse(execFileSync('sqlite3', ['-readonly', '-json', `file:${dbPath}?immutable=1`, query], { encoding: 'utf8', timeout: 2500 }) || '[]');
+  }
+}
 function readStatus(cwd, title) {
   const root = process.env.CODEX_HOME || path.join(os.homedir(), '.codex');
   const quote = value => "'" + value.replaceAll("'", "''") + "'";
   const query = `SELECT id, name, title, cwd, model, reasoning_effort, rollout_path FROM threads WHERE archived=0 AND cwd=${quote(cwd)} ORDER BY updated_at DESC LIMIT 100`;
-  const rows = JSON.parse(execFileSync('sqlite3', ['-readonly', '-json', path.join(root, 'state_5.sqlite'), query], { encoding: 'utf8', timeout: 2500 }) || '[]');
+  const rows = queryThreads(path.join(root, 'state_5.sqlite'), query);
   const thread = chooseThread(rows, title);
   if (!thread) return { error: 'Waiting for matching Codex session' };
   const fd = fs.openSync(thread.rollout_path, 'r');

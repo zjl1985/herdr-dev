@@ -2,6 +2,8 @@
 // 按钮在按下时执行并阻止冒泡，避免被头部的聚焦点击或终端吞掉。
 import { View, div, svg, image } from "gpui-kit";
 import { h_flex } from "gpui-base";
+import { UI, MONO } from "./zero-tokens.js";
+import { motionOn } from "./zero-kit.js";
 import { panes, props, run, theme, home } from "herdr";
 
 function icon(p, size, color) {
@@ -35,7 +37,7 @@ function button(t, id, name, tip, command, args, danger = false) {
       run(command, args);
     })
     .on_click((_e, cx) => cx.stop_propagation())
-    .child(svg(`mods/claude-pane/${name}.svg`).size(14));
+    .child(svg(`mods/zero-ui/icons/${name}.svg`).size(14));
 }
 
 export default class ClaudePane extends View {
@@ -58,16 +60,15 @@ export default class ClaudePane extends View {
       .pr(6)
       .gap(8)
       .items_center()
-      .bg(t.background)
-      .border_b(1)
-      .border_color(t.border)
-      .text_size(12.5)
+      .bg(t.surface)
+      .font_family(UI)
+      .text_size(12)
       .on_click(() => run("pane.focus", { pane }))
       .when(Boolean(pic), (el) => el.child(pic))
       .child(div().flex_none().truncate().max_w(260).font_medium().text_color(t.foreground).child(name))
-      .child(div().flex_1().min_w(0).truncate().text_color(t.dim).child(folder(p.cwd)))
+      .child(div().flex_1().min_w(0).truncate().text_color(t.muted).font_family(MONO).text_size(10.5).tooltip(p.cwd ?? "").child(folder(p.cwd)))
       .when(st === "working", (el) =>
-        el.child(svg("mods/workspace-chrome/spinner.svg").size(12).flex_none().text_color(t.working).spin(900))
+        el.child(svg("mods/zero-ui/icons/spinner.svg").size(12).flex_none().text_color(t.working).when(motionOn(), el => el.spin(900)))
       )
       .when(st === "blocked", (el) =>
         el.child(
@@ -79,7 +80,10 @@ export default class ClaudePane extends View {
       .child(
         h_flex()
           .flex_none()
-          .gap(2)
+          .gap(1)
+          .px(2)
+          .rounded(7)
+          .bg(t.canvas)
           .items_center()
           .child(button(t, `cp-r-${pane}`, "split-right", "Split right", "pane.split", { direction: "right", pane }))
           .child(button(t, `cp-d-${pane}`, "split-down", "Split down", "pane.split", { direction: "down", pane }))
@@ -88,6 +92,7 @@ export default class ClaudePane extends View {
               button(t, `cp-z-${pane}`, p.zoomed ? "unzoom" : "zoom", p.zoomed ? "Show all" : "Zoom", "pane.zoom", { pane })
             )
           )
+          .child(div().w(1).h(12).mx(3).bg(t.border))
           .child(button(t, `cp-x-${pane}`, "close", "Close", "pane.close", { pane }, true))
       );
   }

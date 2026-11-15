@@ -1,6 +1,6 @@
 import { View, div, svg } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
-import { closeOverlay, exec, notify, props, theme } from "herdr";
+import { closeOverlay, exec, notify, props, theme, window } from "herdr";
 
 const ACTIONS = [
   { id: "finder", label: "Open in Finder", icon: "mods/files/folder.svg" },
@@ -10,7 +10,10 @@ const ACTIONS = [
 export default class FilesMenu extends View {
   init(_props, cx) {
     this.handle = cx.focus_handle();
+    this.highlight = 0;
     this.handle.focus();
+    // G04: "open" exists on macOS only; other platforms get disabled rows.
+    this.supported = window()?.platform === "macos";
   }
 
   choose(action, cx) {
@@ -31,15 +34,20 @@ export default class FilesMenu extends View {
 
   render() {
     const t = theme();
-    return v_flex().id("files-menu").track_focus(this.handle).w_full().p(5).gap(2).bg(t.popover).text_size(12.8)
+    return v_flex().id("files-menu").track_focus(this.handle).w_full().p(5).gap(2).bg(t.popover).text_size(12)
       .on_key_down((event, cx) => {
-        if (event.key === "escape") closeOverlay(props()?.overlay);
-        else if (event.key === "enter") this.choose(ACTIONS[0], cx);
+        if (event.key === "escape") { closeOverlay(props()?.overlay); cx.stop_propagation(); }
+        else if (event.key === "down") { this.highlight = Math.min(this.highlight + 1, ACTIONS.length - 1); cx.stop_propagation(); cx.notify(); }
+        else if (event.key === "up") { this.highlight = Math.max(this.highlight - 1, 0); cx.stop_propagation(); cx.notify(); }
+        else if (event.key === "enter" && this.supported) { this.choose(ACTIONS[this.highlight], cx); cx.stop_propagation(); }
       })
-      .children(ACTIONS.map(action => h_flex().id(`file-action-${action.id}`).h(31).px(8).gap(9).rounded(7).items_center()
-        .text_color(t.foreground).cursor_pointer().hover(s => s.bg(t.hover))
-        .on_click((_event, cx) => this.choose(action, cx))
-        .child(svg(action.icon).size(14).flex_none().text_color(t.muted))
-        .child(div().flex_1().child(action.label))));
+      .children(ACTIONS.map((action, i) => h_flex().id(`file-action-${action.id}`).h(31).px(8).gap(9).rounded(7).items_center()
+        .when(this.supported && i === this.highlight, s => s.bg(t.hover))
+        .text_color(this.supported ? t.foreground : t.dim).cursor_pointer()
+        .hover(s => s.bg(t.hover))
+        .on_click((_event, cx) => this.supported && this.choose(action, cx))
+        .child(svg(`mods/zero-ui/icons/${action.id === "finder" ? "folder" : "square-pen"}.svg`).size(14).flex_none().text_color(t.muted))
+        .child(div().flex_1().child(action.label))))
+      .when(!this.supported, el => el.child(div().px(8).py(4).text_size(10.5).text_color(t.dim).child("Opening in Finder or Zed works on macOS only")));
   }
 }
