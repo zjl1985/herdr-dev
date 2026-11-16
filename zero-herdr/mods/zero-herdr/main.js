@@ -306,13 +306,14 @@ export default class ZeroHerdr extends View {
     const payload = await this.readSessionChannel("kiro", space, lead, pane, async () => {
       const [sessionResult, accountResult] = await Promise.allSettled([
         exec("node", [appHome() + "/mods/zero-herdr/kiro-status.cjs", pane?.cwd ?? "", lead.title ?? "", JSON.stringify(this.kiroCache ?? null)], { timeout: 5000 }).then((r) => JSON.parse(r.stdout)),
-        readKiroAccountUsage(hc, lead.address, this.kiroAccountCache),
+        readKiroAccountUsage(exec, appHome(), this.kiroAccountCache),
       ]);
       const session = sessionResult.status === 'fulfilled' ? sessionResult.value : { error: 'Kiro session data unavailable' };
-      const account = accountResult.status === 'fulfilled' ? accountResult.value : null;
+      const account = accountResult.status === 'fulfilled' ? accountResult.value
+        : { state: 'error', source: 'api', data: null, message: 'Kiro 额度读取失败，将自动重试' };
       // An empty/new session can still have a valid account credit balance.
-      return { ...session, ...(account ? { error: null } : {}), accountCredits: account };
-    }, cx);
+      return { ...session, error: null, accountCredits: account };
+    }, cx, 10_000);
     if (payload?.cache) this.kiroCache = payload.cache;
     if (payload) this.kiroAccountCache = payload.accountCredits;
   }
@@ -621,8 +622,8 @@ export default class ZeroHerdr extends View {
     if (m.quotaStale) metrics.child(txt('Cached reading · waiting for refresh', 10.5, p.muted));
 
     const account = m.accountCredits?.data;
-    const snapshotTip = m.accountCredits ? '/usage 快照 · ' + new Date(m.accountCredits.capturedAt).toLocaleString()
-      + '\n重新打开 Kiro /usage 可读取更新后的余额' : '';
+    const snapshotTip = m.accountCredits?.capturedAt ? '账户额度 · ' + new Date(m.accountCredits.capturedAt).toLocaleString()
+      + '\n每分钟自动刷新' + (m.accountCredits.message ? '\n' + m.accountCredits.message : '') : '';
     const creditCard = card('kiro-credits-card').child(heading('Kiro credits',
       txt(account?.planName ?? '积分', 10.5, p.muted).max_w(100).truncate().tooltip(snapshotTip)));
     const creditPool = (id, name, pool, badge, extra = '') => quotaRow(id, name,
@@ -630,18 +631,21 @@ export default class ZeroHerdr extends View {
       { remaining: pool.remaining, tip: extra + '\n剩余 ' + pool.remaining.toFixed(2) + ' credits\n已用 '
         + pool.used.toFixed(2) + ' / ' + pool.total.toFixed(2) + ' credits\n' + snapshotTip });
     if (account) {
-      creditCard.child(creditPool('kiro-plan-quota', 'Plan left', account.plan, 'P', account.planName));
+      if (account.plan) creditCard.child(creditPool('kiro-plan-quota', 'Plan left', account.plan, 'P', account.planName));
       for (const [i, bonus] of (account.bonus ?? []).entries()) {
         creditCard.child(creditPool('kiro-bonus-' + i, account.bonus.length > 1 ? 'Bonus ' + (i + 1) + ' left' : 'Bonus left', bonus, '+',
-          bonus.name + (bonus.expiresInDays != null ? '\n采集时 ' + bonus.expiresInDays + ' 天后到期' : '')));
+          bonus.name + (bonus.expiresOn ? '\n到期 ' + bonus.expiresOn : '')));
       }
-      if (account.bonus === null) creditCard.child(txt('赠送积分未完整显示，请展开 /usage', 10.5, p.muted));
+      for (const [i, addOn] of (account.addOn ?? []).entries()) {
+        creditCard.child(creditPool('kiro-addon-' + i, account.addOn.length > 1 ? 'Add-on ' + (i + 1) + ' left' : 'Add-on left', addOn, '+',
+          addOn.expiresOn ? '到期 ' + addOn.expiresOn : '加购积分'));
+      }
       creditCard.child(h_flex().w_full().items_center().gap(6).pt(2)
-        .child(txt('Reset ' + account.resetsOn.slice(5), 10.5, p.muted).tooltip('套餐重置 ' + account.resetsOn))
+        .when(Boolean(account.resetsOn), el => el.child(txt('Reset ' + account.resetsOn.slice(5), 10.5, p.muted).tooltip('套餐重置 ' + account.resetsOn)))
         .child(div().flex_1())
-        .child(txt(Date.now() - m.accountCredits.capturedAt > STALE_AFTER ? 'Stale snapshot' : 'Snapshot', 10.5, p.muted).tooltip(snapshotTip)));
+        .child(txt(m.accountCredits.state === 'stale' ? 'Cached · retrying' : 'Auto refresh', 10.5, p.muted).tooltip(snapshotTip)));
     } else {
-      creditCard.child(txt('在 Kiro 打开 /usage 读取账户积分', 11, p.muted));
+      creditCard.child(txt(m.accountCredits?.message ?? '正在读取账户额度…', 11, p.muted));
     }
     if (m.credits != null) creditCard.child(div().w_full().h(1).bg(p.line))
       .child(h_flex().w_full().justify_between().gap(6).child(txt('本会话已用', 11, p.muted))

@@ -90,23 +90,32 @@ test('Kiro distinguishes zero credits from unavailable credits', async () => {
     p.context.exec = async () => ({ stdout: JSON.stringify({ credits: value }) });
     await p.view.refreshSession(p.cx); p.view.render(p.cx);
     assert.equal(p.children.includes('0.00 credits'), value === 0);
-    assert.ok(p.children.includes('在 Kiro 打开 /usage 读取账户积分'));
+    assert.ok(p.children.includes('正在读取账户额度…'));
     assert.ok(!p.children.includes('Available quota'));
   }
 });
 test('Kiro account quota renders even when no matching session log exists', async () => {
   const p = panel(); p.switchTo({ app: 'kiro-cli' });
-  p.context.exec = async () => ({ stdout: '{"error":"Waiting for matching Kiro session"}' });
-  p.context.hc = async ([cmd]) => ({ code: 0, stdout: cmd === 'get'
-    ? JSON.stringify({ status: { app: 'kiro-cli' }, foreground: { pid: 99 }, created_ms: 1 })
-    : 'Estimated Usage | resets on 2026-12-01 | KIRO FREE\nCredits (0.00 of 50 covered in plan)\nBonus credits\nkiroween2026: 0/4000 credits used, expires in 46 days' });
+  p.context.exec = async (_cmd, args) => ({ stdout: JSON.stringify(args[0].endsWith('kiro-account.cjs')
+    ? { state: 'ready', capturedAt: Date.now(), data: { planName: 'KIRO FREE', resetsOn: '2026-12-01',
+      plan: { used: 0, total: 50, remaining: 50 }, bonus: [{ name: 'kiroween2026', used: 0, total: 4000, remaining: 4000 }] } }
+    : { error: 'Waiting for matching Kiro session' }) });
   await p.view.refreshSession(p.cx); p.view.render(p.cx);
   assert.ok(p.children.includes('50'));
   assert.ok(p.children.includes('4000'));
   assert.ok(p.children.includes('Plan left'));
   assert.ok(p.children.includes('Bonus left'));
   assert.ok(p.children.includes('cr'));
-  assert.ok(!p.children.includes('在 Kiro 打开 /usage 读取账户积分'));
+  assert.ok(p.children.includes('Auto refresh'));
+});
+test('Kiro account errors remain visible even without a matching session log', async () => {
+  const p = panel(); p.switchTo({ app: 'kiro-cli' });
+  p.context.exec = async (_cmd, args) => ({ stdout: JSON.stringify(args[0].endsWith('kiro-account.cjs')
+    ? { state: 'error', source: 'api', data: null, message: 'Kiro 登录已失效' }
+    : { error: 'Waiting for matching Kiro session' }) });
+  await p.view.refreshSession(p.cx); p.view.render(p.cx);
+  assert.ok(p.children.includes('Kiro 登录已失效'));
+  assert.ok(!p.children.includes('正在读取账户额度…'));
 });
 function switcher() {
   const state = new Map(); let writes = 0;
