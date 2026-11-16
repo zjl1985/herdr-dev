@@ -2,7 +2,7 @@
 // 按钮在按下时执行并阻止冒泡，避免被头部的聚焦点击或终端吞掉。
 import { View, div, svg, image } from "gpui-kit";
 import { h_flex } from "gpui-base";
-import { UI, MONO } from "./zero-tokens.js";
+import { T, UI, MONO } from "./zero-tokens.js";
 import { motionOn } from "./zero-kit.js";
 import { panes, props, run, theme, home } from "herdr";
 
@@ -61,6 +61,7 @@ export default class ClaudePane extends View {
       .gap(8)
       .items_center()
       .bg(t.surface)
+      .rounded_t(T.radius.outer)
       .font_family(UI)
       .text_size(12)
       .on_click(() => run("pane.focus", { pane }))

@@ -480,8 +480,8 @@ export default class ZeroHerdr extends View {
   }
 
 
-  // Paper Dots: compact session surface, a measured dot ring, stacked quota
-  // rows. All surfaces and state colors come from the selected theme.
+  // Context uses a position scale; quota keeps its original remaining dots.
+  // Every color follows theme().
   render(cx) {
     const gone = Date.now() - this.lastRender > HIDDEN_AFTER;
     this.lastRender = Date.now();
@@ -513,7 +513,7 @@ export default class ZeroHerdr extends View {
     const icon = (name, size = 14, color = p.muted) => svg('mods/zero-ui/icons/' + name + '.svg').size(size).flex_none().text_color(color);
     const card = id => v_flex().id(id).w_full().flex_none().relative().p(14).gap(12).rounded(12)
       .bg(material.top)
-      .border(1).border_color(material.edge).shadow_md();
+      .border(.5).border_color(material.edge).shadow_md();
     const heading = (name, right = null) => h_flex().w_full().items_center().gap(7)
       .child(dot(p.accent, 4)).child(txt(name, 12).font_weight(500)).child(div().flex_1())
       .when(Boolean(right), el => el.child(right));
@@ -525,25 +525,23 @@ export default class ZeroHerdr extends View {
       const filled = n == null ? 0 : Math.max(n > 0 ? 1 : 0, Math.round(n * count / 100));
       return h_flex().w_full().items_center().justify_between().children(Array.from({ length: count }, (_, i) => dot(i < filled ? color : p.track, 5)));
     };
+    const contextRuler = (value, color) => {
+      const n = percent(value);
+      return div().id('context-ruler').w_full().h(26).px(8).rounded(6)
+        .bg(material.well).border(.5).border_color(material.wellEdge)
+        .child(div().relative().w_full().h_full()
+          .children(Array.from({ length: 21 }, (_, i) => div().absolute().left(i * 5 + '%')
+            .ml(i === 20 ? -1 : 0).bottom(8).w(1).h(i % 5 === 0 ? 10 : i % 2 === 0 ? 7 : 4)
+            .rounded_full().bg(i % 5 === 0 ? p.dim : p.track)))
+          .child(div().id('context-needle').absolute().left(n + '%')
+            .ml(n === 100 ? -1.5 : n === 0 ? 0 : -.75).top(4).w(1.5).h(18).rounded_full().bg(color)));
+    };
     const valueText = (value, size = 23, color = p.text) => h_flex().items_baseline().gap(3)
       .child(txt(percent(value) == null ? '—' : Math.round(percent(value)), size, color).font_weight(500))
       .when(percent(value) != null, el => el.child(txt('%', 11, p.muted)));
-    const ring = value => {
-      const n = percent(value), filled = n == null ? 0 : Math.max(n > 0 ? 1 : 0, Math.round(n * 60 / 100));
-      const color = n >= 80 ? p.blocked : p.accent;
-      return div().id('context-dot-ring').size(108).flex_none().relative()
-        .children(Array.from({ length: 60 }, (_, i) => {
-          const angle = -Math.PI / 2 + i * Math.PI * 2 / 60;
-          const diameter = i < filled ? 3.8 : i % 5 === 0 ? 3.2 : 2.3;
-          return div().absolute().left(54 + 49 * Math.cos(angle) - diameter / 2).top(54 + 49 * Math.sin(angle) - diameter / 2)
-            .size(diameter).rounded_full().bg(i < filled ? color : p.track);
-        }))
-        .child(v_flex().absolute().top(30).left(0).w(108).items_center().gap(2)
-          .child(valueText(value, 27, p.text)).child(txt('used', 10.5, p.muted)));
-    };
     const chip = (kind, value, caption) => h_flex().id('codex-' + kind + '-picker').min_w(0).flex_1().h(34).px(9).gap(6)
-      .items_center().rounded(8).border(1).border_color(p.line)
-      .bg(pickerOpen(kind) ? p.selected : p.inset)
+      .items_center().rounded(8).border(.5).border_color(material.wellEdge)
+      .bg(pickerOpen(kind) ? p.selected : material.well)
       .when(isCodex, el => el.cursor_pointer().hover(s => s.bg(p.hover)).tooltip(caption)
         .on_click((_e, cx) => this.togglePicker(kind, lead.address, cx)))
       .child(txt(value, 11.5).min_w(0).flex_1().truncate())
@@ -557,8 +555,8 @@ export default class ZeroHerdr extends View {
           localStorage.setItem('zero.reducedMotion', motionOn() ? '1' : '0'); cx.notify();
         }))
         .child(action('status-close', 'panel-right', 'Hide status panel', () => run('layout.hide', { id: 'zero-herdr' }))))
-      .child(h_flex().id('session-signal-banner').w_full().h(34).px(10).rounded(9).border(1).border_color(p.line)
-        .bg(p.inset).items_center().gap(7)
+      .child(h_flex().id('session-signal-banner').w_full().h(34).px(10).rounded(9).border(.5).border_color(material.wellEdge)
+        .bg(material.well).items_center().gap(7)
         .child(dot(stateColor, 5, working)).child(txt(lead ? info.label : 'No agent', 11, stateColor).font_weight(500))
         .when(Boolean(elapsed), el => el.child(mono(elapsed, 10)))
         .child(div().flex_1())
@@ -577,24 +575,34 @@ export default class ZeroHerdr extends View {
       : m.sessionError;
     if (sessionNotice) session.child(txt(sessionNotice, 11, m.sessionError ? p.blocked : p.muted));
 
-    const hasContext = percent(m.context?.percent) != null;
+    const contextPercent = percent(m.context?.percent);
+    const hasContext = contextPercent != null;
+    const contextNearCapacity = hasContext && contextPercent >= 80;
+    const contextColor = contextNearCapacity ? p.blocked : p.accent;
+    const tokenCount = value => Math.round(Number(value)).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    const contextDetail = hasContext ? 'Conversation context · ' + contextPercent + '% used'
+      + (Number.isFinite(m.context.used) && Number.isFinite(m.context.total) && m.context.total > 0
+        ? '\n' + tokenCount(m.context.used) + ' / ' + tokenCount(m.context.total) + ' tokens' : '') : '';
     const hasQuota = m.fiveHour != null || m.weekly != null;
     const metrics = card('metrics-card')
-      .when(hasContext, el => el.child(h_flex().w_full().items_center().gap(16)
-        .child(ring(m.context.percent))
-        .child(v_flex().flex_1().min_w(0).gap(7)
-          .child(txt('Context', 14).font_weight(500))
-          .child(txt('Conversation\nwindow', 11, p.muted).line_height(1.4))
-          .child(h_flex().items_center().gap(5).child(dot(m.context.percent >= 80 ? p.blocked : p.accent, 4))
-            .child(txt(m.context.percent >= 80 ? 'Near capacity' : 'In use', 10.5, p.muted))))))
-      .when(hasContext && hasQuota, el => el.child(div().w_full().h(1).bg(p.line).my(2)))
+      .when(hasContext, el => el.child(v_flex().id('context-usage').w_full().gap(8).tooltip(contextDetail)
+        .child(h_flex().id('context-readout').w_full().items_center().gap(8)
+          .child(txt('Context', 12).font_weight(500).line_height(1).flex_1())
+          .child(h_flex().flex_none().items_center().gap(5)
+            .child(txt('used', 10.5, p.muted).line_height(1))
+            .child(h_flex().h(24).px(8).items_center().rounded(6).bg(material.well)
+              .border(.5).border_color(material.wellEdge).shadow_xs()
+              .child(txt(Math.round(contextPercent) + '%', 16, contextNearCapacity ? p.blocked : p.text).font_weight(500).line_height(1).font_family(MONO)))))
+        .child(contextRuler(contextPercent, contextColor))
+        .when(contextNearCapacity, row => row.child(txt('Near capacity', 10.5, p.blocked)))))
+      .when(hasContext && hasQuota, el => el.child(div().w_full().h(.5).bg(p.line)))
       .when(hasQuota, el => el.child(heading('Available quota')));
     const quotaRow = (id, name, value, badge, credit = null) => {
       const low = value != null && value <= 20;
       const color = low ? p.blocked : p.accent;
       return h_flex().id(id).w_full().items_center().gap(10)
         .when(Boolean(credit), el => el.tooltip(credit.tip))
-        .child(div().size(30).flex_none().rounded(9).bg(p.inset).flex().items_center().justify_center().child(mono(badge, 10, p.muted)))
+        .child(div().size(30).flex_none().rounded(9).bg(material.well).flex().items_center().justify_center().child(mono(badge, 10, p.muted)))
         .child(v_flex().flex_1().min_w(0).gap(7)
           .child(h_flex().w_full().items_baseline().justify_between().gap(5)
             .child(txt(name, 12).min_w(0).truncate())
@@ -662,8 +670,10 @@ export default class ZeroHerdr extends View {
           .child(txt(agent.program?.name ?? 'Agent', 11.5).flex_1().min_w(0).truncate())
           .child(txt(st.label, 10.5, p.muted));
       })));
-    return v_flex().id('zero-herdr-root').size_full().font_family(UI).overflow_hidden()
-      .child(v_flex().id('zero-herdr-body').w_full().flex_1().min_h(0).overflow_y_scrollbar().pb(6).gap(10)
+    return v_flex().id('zero-herdr-root').size_full().font_family(UI)
+      // The layout owns the outer spacing. Keep card edges on its grid;
+      // only reserve scroll space below the last card for its shadow.
+      .child(v_flex().id('zero-herdr-body').w_full().flex_1().min_h(0).overflow_y_scrollbar().pb(12).gap(10)
         .child(session)
         .when(hasContext || hasQuota || m.quotaStale, el => el.child(metrics))
         .when(m.isKiro, el => el.child(creditCard))
