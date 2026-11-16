@@ -9,6 +9,7 @@ import { motionOn, programIcon } from "./zero-kit.js";
 import { attemptSwitch, invalidateSwitch, noteCodexData, switchState } from "./switcher.js";
 import { PICK_KEY, SWITCH_KEY, PICKER_KEY } from "./switch-shared.js";
 import { cardMaterial } from "./material.js";
+import { readKiroAccountUsage } from "./kiro-usage.js";
 
 // C10: a hidden panel stops reading — render() stamps lastRender, and every
 // timer skips work once the panel has not rendered for this long.
@@ -302,9 +303,18 @@ export default class ZeroHerdr extends View {
   }
 
   async readKiro(space, lead, pane, cx) {
-    const payload = await this.readSessionChannel("kiro", space, lead, pane, () =>
-      exec("node", [appHome() + "/mods/zero-herdr/kiro-status.cjs", pane?.cwd ?? "", lead.title ?? "", JSON.stringify(this.kiroCache ?? null)], { timeout: 5000 }).then((r) => JSON.parse(r.stdout)), cx);
+    const payload = await this.readSessionChannel("kiro", space, lead, pane, async () => {
+      const [sessionResult, accountResult] = await Promise.allSettled([
+        exec("node", [appHome() + "/mods/zero-herdr/kiro-status.cjs", pane?.cwd ?? "", lead.title ?? "", JSON.stringify(this.kiroCache ?? null)], { timeout: 5000 }).then((r) => JSON.parse(r.stdout)),
+        readKiroAccountUsage(hc, lead.address, this.kiroAccountCache),
+      ]);
+      const session = sessionResult.status === 'fulfilled' ? sessionResult.value : { error: 'Kiro session data unavailable' };
+      const account = accountResult.status === 'fulfilled' ? accountResult.value : null;
+      // An empty/new session can still have a valid account credit balance.
+      return { ...session, ...(account ? { error: null } : {}), accountCredits: account };
+    }, cx);
     if (payload?.cache) this.kiroCache = payload.cache;
+    if (payload) this.kiroAccountCache = payload.accountCredits;
   }
 
   async readAgy(space, lead, pane, cx) {
@@ -459,6 +469,7 @@ export default class ZeroHerdr extends View {
       kiro: adapter === "kiro" ? data : null,
       agy: adapter === "antigravity" ? data : null,
       context, weekly, fiveHour, weeklyReset, credits, isKimi, isKiro,
+      accountCredits: isKiro ? data.accountCredits : null,
       git: gitCh,
       working,
       gitKey: this.gitKey,
@@ -578,14 +589,18 @@ export default class ZeroHerdr extends View {
             .child(txt(m.context.percent >= 80 ? 'Near capacity' : 'In use', 10.5, p.muted))))))
       .when(hasContext && hasQuota, el => el.child(div().w_full().h(1).bg(p.line).my(2)))
       .when(hasQuota, el => el.child(heading('Available quota')));
-    const quotaRow = (id, name, value, badge) => {
+    const quotaRow = (id, name, value, badge, credit = null) => {
       const low = value != null && value <= 20;
       const color = low ? p.blocked : p.accent;
       return h_flex().id(id).w_full().items_center().gap(10)
+        .when(Boolean(credit), el => el.tooltip(credit.tip))
         .child(div().size(30).flex_none().rounded(9).bg(p.inset).flex().items_center().justify_center().child(mono(badge, 10, p.muted)))
         .child(v_flex().flex_1().min_w(0).gap(7)
           .child(h_flex().w_full().items_baseline().justify_between().gap(5)
-            .child(txt(name, 12)).child(valueText(value, 19, low ? p.blocked : p.text)))
+            .child(txt(name, 12).min_w(0).truncate())
+            .child(credit ? h_flex().flex_none().items_baseline().gap(3)
+              .child(txt(credit.remaining.toFixed(2).replace(/\.00$/, '').replace(/(\.\d)0$/, '$1'), 19, low ? p.blocked : p.text).font_weight(500))
+              .child(txt('cr', 10.5, p.muted)) : valueText(value, 19, low ? p.blocked : p.text)))
           .child(dots(value, 18, color))
           .when(low, el => el.child(txt('Low remaining quota', 10.5, p.blocked))));
     };
@@ -597,15 +612,32 @@ export default class ZeroHerdr extends View {
         .tooltip(new Date(m.weeklyReset * 1000).toString() + ' · ' + TZ_LABEL)));
     if (m.quotaStale) metrics.child(txt('Cached reading · waiting for refresh', 10.5, p.muted));
 
-    const creditCard = card('kiro-credits-card')
-      .child(heading('Kiro credits', mono('积分', 10.5)))
-      .child(txt('本会话已用', 11, p.muted))
-      .child(h_flex().w_full().items_baseline().gap(7)
-        .child(txt(m.credits == null ? '—' : m.credits.toFixed(2), 32).font_weight(500))
-        .child(txt('credits', 12, p.muted)))
-      .child(txt(m.credits == null ? '暂无积分读数' : '按本会话的实际消耗累计', 10.5, p.muted))
-      .child(div().w_full().h(1).bg(p.line))
-      .child(txt('账户剩余积分尚未读取', 10.5, p.muted));
+    const account = m.accountCredits?.data;
+    const snapshotTip = m.accountCredits ? '/usage 快照 · ' + new Date(m.accountCredits.capturedAt).toLocaleString()
+      + '\n重新打开 Kiro /usage 可读取更新后的余额' : '';
+    const creditCard = card('kiro-credits-card').child(heading('Kiro credits',
+      txt(account?.planName ?? '积分', 10.5, p.muted).max_w(100).truncate().tooltip(snapshotTip)));
+    const creditPool = (id, name, pool, badge, extra = '') => quotaRow(id, name,
+      pool.total > 0 ? pool.remaining / pool.total * 100 : null, badge,
+      { remaining: pool.remaining, tip: extra + '\n剩余 ' + pool.remaining.toFixed(2) + ' credits\n已用 '
+        + pool.used.toFixed(2) + ' / ' + pool.total.toFixed(2) + ' credits\n' + snapshotTip });
+    if (account) {
+      creditCard.child(creditPool('kiro-plan-quota', 'Plan left', account.plan, 'P', account.planName));
+      for (const [i, bonus] of (account.bonus ?? []).entries()) {
+        creditCard.child(creditPool('kiro-bonus-' + i, account.bonus.length > 1 ? 'Bonus ' + (i + 1) + ' left' : 'Bonus left', bonus, '+',
+          bonus.name + (bonus.expiresInDays != null ? '\n采集时 ' + bonus.expiresInDays + ' 天后到期' : '')));
+      }
+      if (account.bonus === null) creditCard.child(txt('赠送积分未完整显示，请展开 /usage', 10.5, p.muted));
+      creditCard.child(h_flex().w_full().items_center().gap(6).pt(2)
+        .child(txt('Reset ' + account.resetsOn.slice(5), 10.5, p.muted).tooltip('套餐重置 ' + account.resetsOn))
+        .child(div().flex_1())
+        .child(txt(Date.now() - m.accountCredits.capturedAt > STALE_AFTER ? 'Stale snapshot' : 'Snapshot', 10.5, p.muted).tooltip(snapshotTip)));
+    } else {
+      creditCard.child(txt('在 Kiro 打开 /usage 读取账户积分', 11, p.muted));
+    }
+    if (m.credits != null) creditCard.child(div().w_full().h(1).bg(p.line))
+      .child(h_flex().w_full().justify_between().gap(6).child(txt('本会话已用', 11, p.muted))
+        .child(mono(m.credits.toFixed(2) + ' credits', 12, p.text)));
 
     const git = m.git.state === 'ready' ? m.git.data : null;
     const branch = git?.branch ?? pane?.branch;

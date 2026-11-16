@@ -5,6 +5,7 @@ import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
 import * as data from '../mods/zero-herdr/data.js';
 import { cardMaterial } from '../mods/zero-herdr/material.js';
+import { readKiroAccountUsage } from '../mods/zero-herdr/kiro-usage.js';
 const root = fileURLToPath(new URL('../', import.meta.url));
 function load(file, globals, tail) {
   const source = fs.readFileSync(root + file, 'utf8').replace(/^import .*;$/gm, '').replace(/^export default /gm, '').replace(/^export /gm, '');
@@ -20,7 +21,7 @@ function panel() {
   const children = [];
   const el = new Proxy({}, { get: (_, key) => key === 'when' ? (b, yes, no) => { if (b) yes(el); else if (no) no(el); return el; } : key === 'child' ? (...values) => { children.push(...values); return el; } : () => el });
   const context = load('mods/zero-herdr/main.js', {
-    ...data, cardMaterial, Background: { linear_gradient: () => ({}) }, View: class {}, Date, console, div: () => el, svg: () => el, h_flex: () => el, v_flex: () => el,
+    ...data, cardMaterial, readKiroAccountUsage, hc: async () => { throw Error('No terminal'); }, View: class {}, Date, console, div: () => el, svg: () => el, h_flex: () => el, v_flex: () => el,
     spaces: () => [space], agents: () => [agent()], panes: () => [{ pane: current.address, cwd: current.cwd }], focused: () => ({ pane: current.address }),
     layout: () => ({ id: 'zero-herdr', hidden: false }), appHome: () => '/tmp', home: () => '/home',
     invalidateSwitch: () => {}, noteCodexData: () => { confirmations++; return true; }, closeOverlay: () => {},
@@ -78,7 +79,7 @@ test('Kiro credit card uses decimal session spend and never percentage quotas', 
   assert.equal(p.view.model().weekly, null);
   p.view.render(p.cx);
   assert.ok(p.children.includes('Kiro credits'));
-  assert.ok(p.children.includes('1234.56'));
+  assert.ok(p.children.includes('1234.56 credits'));
   assert.ok(p.children.includes('本会话已用'));
   assert.ok(!p.children.includes('Available quota'));
   assert.ok(p.children.includes('Context'));
@@ -88,10 +89,24 @@ test('Kiro distinguishes zero credits from unavailable credits', async () => {
     const p = panel(); p.switchTo({ app: 'kiro' });
     p.context.exec = async () => ({ stdout: JSON.stringify({ credits: value }) });
     await p.view.refreshSession(p.cx); p.view.render(p.cx);
-    assert.ok(p.children.includes(value === 0 ? '0.00' : '暂无积分读数'));
-    assert.ok(p.children.includes('账户剩余积分尚未读取'));
+    assert.equal(p.children.includes('0.00 credits'), value === 0);
+    assert.ok(p.children.includes('在 Kiro 打开 /usage 读取账户积分'));
     assert.ok(!p.children.includes('Available quota'));
   }
+});
+test('Kiro account quota renders even when no matching session log exists', async () => {
+  const p = panel(); p.switchTo({ app: 'kiro-cli' });
+  p.context.exec = async () => ({ stdout: '{"error":"Waiting for matching Kiro session"}' });
+  p.context.hc = async ([cmd]) => ({ code: 0, stdout: cmd === 'get'
+    ? JSON.stringify({ status: { app: 'kiro-cli' }, foreground: { pid: 99 }, created_ms: 1 })
+    : 'Estimated Usage | resets on 2026-12-01 | KIRO FREE\nCredits (0.00 of 50 covered in plan)\nBonus credits\nkiroween2026: 0/4000 credits used, expires in 46 days' });
+  await p.view.refreshSession(p.cx); p.view.render(p.cx);
+  assert.ok(p.children.includes('50'));
+  assert.ok(p.children.includes('4000'));
+  assert.ok(p.children.includes('Plan left'));
+  assert.ok(p.children.includes('Bonus left'));
+  assert.ok(p.children.includes('cr'));
+  assert.ok(!p.children.includes('在 Kiro 打开 /usage 读取账户积分'));
 });
 function switcher() {
   const state = new Map(); let writes = 0;
