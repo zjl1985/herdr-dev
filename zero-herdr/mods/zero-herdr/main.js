@@ -511,7 +511,7 @@ export default class ZeroHerdr extends View {
     const dot = (color, size = 5, pulse = false) => div().size(size).flex_none().rounded_full().bg(color)
       .when(pulse && motionOn(), el => el.loop('opacity', { from: 0.35, to: 1, period: 1600 }));
     const icon = (name, size = 14, color = p.muted) => svg('mods/zero-ui/icons/' + name + '.svg').size(size).flex_none().text_color(color);
-    const card = id => v_flex().id(id).w_full().flex_none().relative().p(14).gap(12).rounded(18)
+    const card = id => v_flex().id(id).w_full().flex_none().relative().p(14).gap(12).rounded(12)
       .bg(material.top)
       .border(1).border_color(material.edge).shadow_md();
     const heading = (name, right = null) => h_flex().w_full().items_center().gap(7)
@@ -663,7 +663,7 @@ export default class ZeroHerdr extends View {
           .child(txt(st.label, 10.5, p.muted));
       })));
     return v_flex().id('zero-herdr-root').size_full().font_family(UI).overflow_hidden()
-      .child(v_flex().id('zero-herdr-body').w_full().flex_1().min_h(0).overflow_y_scrollbar().px(6).pb(6).gap(14)
+      .child(v_flex().id('zero-herdr-body').w_full().flex_1().min_h(0).overflow_y_scrollbar().pb(6).gap(10)
         .child(session)
         .when(hasContext || hasQuota || m.quotaStale, el => el.child(metrics))
         .when(m.isKiro, el => el.child(creditCard))
