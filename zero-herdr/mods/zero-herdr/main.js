@@ -2,7 +2,7 @@ import { View, div, svg, image } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
 import { agents, appHome, closeOverlay, exec, focused, hc, home, layout, nextCommand, notify, openOverlay, panes, run, shared, setShared, spaces, theme } from "herdr";
 // C11: Z no longer calls setAgentOrder — the drawer owns traversal order.
-import { folder, formatDuration, parseGitStatus, parseKimiUsage, taskTitle, cleanTitle } from "./data.js";
+import { folder, formatDuration, formatResetTime, parseGitStatus, parseKimiUsage, taskTitle, cleanTitle } from "./data.js";
 import { T, UI, MONO } from "./zero-tokens.js";
 import { palette, statusInfo } from "./zero-theme.js";
 import { motionOn, programIcon } from "./zero-kit.js";
@@ -456,6 +456,7 @@ export default class ZeroHerdr extends View {
     const isKiro = adapter === "kiro";
     const weekly = isKiro ? null : data.weekly?.left ?? (isKimi ? limitsData.weekly?.left : null);
     const fiveHour = isKiro ? null : data.fiveHour?.left ?? (isKimi ? limitsData.fiveHour?.left : null);
+    const fiveHourReset = isKiro ? null : data.fiveHour?.resetsAt ?? (isKimi ? limitsData.fiveHour?.resetsAt : null);
     const weeklyReset = isKiro ? null : data.weekly?.resetsAt ?? (isKimi ? limitsData.weekly?.resetsAt : null);
     const creditValue = data.creditUsage?.used ?? data.credits;
     const credits = creditValue != null && Number.isFinite(Number(creditValue)) && Number(creditValue) >= 0 ? Number(creditValue) : null;
@@ -469,7 +470,7 @@ export default class ZeroHerdr extends View {
       codex: adapter === "codex" ? data : null,
       kiro: adapter === "kiro" ? data : null,
       agy: adapter === "antigravity" ? data : null,
-      context, weekly, fiveHour, weeklyReset, credits, isKimi, isKiro,
+      context, weekly, fiveHour, fiveHourReset, weeklyReset, credits, isKimi, isKiro,
       accountCredits: isKiro ? data.accountCredits : null,
       git: gitCh,
       working,
@@ -598,27 +599,45 @@ export default class ZeroHerdr extends View {
         .when(contextNearCapacity, row => row.child(txt('Near capacity', 10.5, p.blocked)))))
       .when(hasContext && hasQuota, el => el.child(div().w_full().h(.5).bg(p.line)))
       .when(hasQuota, el => el.child(heading('Available quota')));
-    const quotaRow = (id, name, value, badge, credit = null) => {
+    const quotaRow = (id, name, value, badge, credit = null, resetAt = null) => {
       const low = value != null && value <= 20;
       const color = low ? p.blocked : p.accent;
+      const reset = formatResetTime(resetAt);
+      const resetParts = reset?.split(' ') ?? [];
+      const resetTime = resetParts.pop() ?? '';
+      const resetDate = resetParts.join(' ');
+      const tickCount = id === 'quota-weekly' ? 7 : 12;
+      const windowMs = id === 'quota-weekly' ? 7 * 24 * 60 * 60_000 : 5 * 60 * 60_000;
+      const elapsed = reset ? Math.max(0, Math.min(100, 100 - (resetAt * 1000 - Date.now()) / windowMs * 100)) : 0;
+      const activeTick = Math.min(tickCount - 1, Math.floor(elapsed / 100 * tickCount));
+      const resetRail = reset ? h_flex().min_w(0).flex_1().items_center().gap(7)
+        .tooltip('Next reset · ' + new Date(resetAt * 1000).toString() + ' · ' + TZ_LABEL)
+        .child(h_flex().id(id + '-reset-rail').w(70).h(22).flex_none().items_center().justify_between()
+          .children(Array.from({ length: tickCount }, (_, i) => {
+            const active = i === activeTick;
+            const major = i === 0 || i === tickCount - 1 || i % 3 === 0;
+            return div().w(active ? 2.5 : 1.5).h(active ? 13 : major ? 8 : 4).rounded_full()
+              .bg(active ? p.accent : i < activeTick ? p.dim : p.track)
+              .when(active && motionOn(), el => el.loop('opacity', { from: 0.35, to: 1, period: 1600 }));
+          })))
+        .child(h_flex().min_w(0).items_baseline().gap(4)
+          .when(Boolean(resetDate), el => el.child(txt(resetDate, 9.5, p.dim)))
+          .child(mono(resetTime, 11.5, p.muted).font_weight(500))) : null;
       return h_flex().id(id).w_full().items_center().gap(10)
         .when(Boolean(credit), el => el.tooltip(credit.tip))
         .child(div().size(30).flex_none().rounded(9).bg(material.well).flex().items_center().justify_center().child(mono(badge, 10, p.muted)))
         .child(v_flex().flex_1().min_w(0).gap(7)
-          .child(h_flex().w_full().items_baseline().justify_between().gap(5)
-            .child(txt(name, 12).min_w(0).truncate())
+          .child(h_flex().w_full().items_center().justify_between().gap(6)
+            .when(Boolean(reset), el => el.child(resetRail))
+            .when(!reset, el => el.child(txt(name, 12).min_w(0).truncate()))
             .child(credit ? h_flex().flex_none().items_baseline().gap(3)
               .child(txt(credit.remaining.toFixed(2).replace(/\.00$/, '').replace(/(\.\d)0$/, '$1'), 19, low ? p.blocked : p.text).font_weight(500))
               .child(txt('cr', 10.5, p.muted)) : valueText(value, 19, low ? p.blocked : p.text)))
           .child(dots(value, 18, color))
           .when(low, el => el.child(txt('Low remaining quota', 10.5, p.blocked))));
     };
-    if (m.fiveHour != null) metrics.child(quotaRow('quota-5h', '5-hour left', m.fiveHour, '5h'));
-    if (m.weekly != null) metrics.child(quotaRow('quota-weekly', 'Weekly left', m.weekly, '7d'));
-    if (m.weeklyReset != null) metrics.child(h_flex().w_full().gap(6).items_center().pt(2)
-      .child(txt('Weekly reset', 10.5, p.muted)).child(div().flex_1())
-      .child(mono(new Date(m.weeklyReset * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), 10.5)
-        .tooltip(new Date(m.weeklyReset * 1000).toString() + ' · ' + TZ_LABEL)));
+    if (m.fiveHour != null) metrics.child(quotaRow('quota-5h', '5-hour left', m.fiveHour, '5h', null, m.fiveHourReset));
+    if (m.weekly != null) metrics.child(quotaRow('quota-weekly', 'Weekly left', m.weekly, '7d', null, m.weeklyReset));
     if (m.quotaStale) metrics.child(txt('Cached reading · waiting for refresh', 10.5, p.muted));
 
     const account = m.accountCredits?.data;

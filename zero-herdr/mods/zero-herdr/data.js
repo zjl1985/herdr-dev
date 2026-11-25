@@ -17,6 +17,20 @@ export function formatDuration(ms) {
   return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
 }
 
+/** Compact local timestamp for the next quota reset. */
+export function formatResetTime(epochSeconds, now = Date.now()) {
+  if (epochSeconds == null || epochSeconds === "" || typeof epochSeconds === "boolean") return null;
+  const reset = new Date(Number(epochSeconds) * 1000);
+  if (!Number.isFinite(reset.getTime())) return null;
+  const current = new Date(now);
+  const time = `${String(reset.getHours()).padStart(2, "0")}:${String(reset.getMinutes()).padStart(2, "0")}`;
+  const sameDay = (a, b) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+  const tomorrow = new Date(current.getFullYear(), current.getMonth(), current.getDate() + 1);
+  if (sameDay(reset, current) || sameDay(reset, tomorrow)) return time;
+  const year = reset.getFullYear() === current.getFullYear() ? "" : `${reset.getFullYear()}/`;
+  return `${year}${reset.getMonth() + 1}/${reset.getDate()} ${time}`;
+}
+
 /** `git status --porcelain=v2 --branch` output -> {branch, changed, ahead, behind}. */
 export function parseGitStatus(output) {
   const result = { branch: null, changed: 0, ahead: 0, behind: 0 };

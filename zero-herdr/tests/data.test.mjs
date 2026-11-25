@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { folder, formatDuration, parseGitStatus, parseKimiUsage, taskTitle, cleanTitle, isValidModelOption, switchLanded } from "../mods/zero-herdr/data.js";
+import { folder, formatDuration, formatResetTime, parseGitStatus, parseKimiUsage, taskTitle, cleanTitle, isValidModelOption, switchLanded } from "../mods/zero-herdr/data.js";
 
 test("folder shortens home paths", () => {
   assert.equal(folder(null, "/h"), "");
@@ -15,6 +15,17 @@ test("formatDuration representative outputs", () => {
   assert.equal(formatDuration(419_000), "6m 59s");
   assert.equal(formatDuration(3_600_000 + 120_000), "1h 2m");
   assert.equal(formatDuration(-5), "0s");
+});
+
+test("formatResetTime shows an absolute local reset timestamp", () => {
+  const now = new Date(2026, 10, 25, 18, 0).getTime();
+  const at = (year, month, day, hour, minute) => new Date(year, month, day, hour, minute).getTime() / 1000;
+  assert.equal(formatResetTime(at(2026, 10, 25, 23, 5), now), "23:05");
+  assert.equal(formatResetTime(at(2026, 10, 26, 8, 9), now), "08:09");
+  assert.equal(formatResetTime(at(2026, 11, 2, 14, 55), now), "12/2 14:55");
+  assert.equal(formatResetTime(at(2027, 0, 1, 0, 0), now), "2027/1/1 00:00");
+  assert.equal(formatResetTime(null, now), null);
+  assert.equal(formatResetTime("invalid", now), null);
 });
 
 test("parseGitStatus handles branch, ahead/behind and changes", () => {

@@ -64,6 +64,31 @@ test('render with model and reasoning data succeeds and shell focus clears data 
   p.switchTo({ app: 'shell', address: 'B', cwd: '/b' });
   assert.equal(p.view.model().codex, null);
 });
+test('Kimi and Antigravity show reset timelines beside unchanged quota values', async () => {
+  const now = Date.now();
+  const fiveHourReset = Math.floor((now + 2 * 60 * 60 * 1000) / 1000);
+  const weeklyReset = Math.floor((now + 3 * 24 * 60 * 60 * 1000) / 1000);
+  const quotas = { fiveHour: { left: 80, resetsAt: fiveHourReset }, weekly: { left: 60, resetsAt: weeklyReset } };
+  const p = panel();
+  p.switchTo({ app: 'agy' });
+  p.context.exec = async () => ({ stdout: JSON.stringify(quotas) });
+  await p.view.refreshSession(p.cx);
+  assert.equal(p.view.model().fiveHour, 80);
+  assert.equal(p.view.model().weekly, 60);
+  assert.equal(p.view.model().fiveHourReset, fiveHourReset);
+  p.view.render(p.cx);
+  assert.ok(p.children.includes(data.formatResetTime(fiveHourReset, now).split(' ').pop()));
+  assert.ok(p.children.includes(data.formatResetTime(weeklyReset, now).split(' ').pop()));
+  assert.ok(!p.children.includes('5-hour left'));
+  assert.ok(!p.children.includes('Weekly left'));
+
+  p.switchTo({ app: 'kimi-code' });
+  p.view.limits = { data: quotas, readAt: now, account: { credential: 'test' } };
+  p.view.setChannel('usage', { state: 'ready', data: { percent: 42 }, observedAt: now });
+  assert.equal(p.view.model().fiveHour, 80);
+  assert.equal(p.view.model().fiveHourReset, fiveHourReset);
+  assert.doesNotThrow(() => p.view.render(p.cx));
+});
 test('late Git result does not overwrite the next workspace', async () => {
   const p = panel(), a = deferred(); p.context.exec = () => a.promise;
   const pending = p.view.refreshGit(p.cx);
