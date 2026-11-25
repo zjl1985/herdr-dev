@@ -26,7 +26,7 @@ function panel() {
     layout: () => ({ id: 'zero-herdr', hidden: false }), appHome: () => '/tmp', home: () => '/home',
     invalidateSwitch: () => {}, noteCodexData: () => { confirmations++; return true; }, closeOverlay: () => {},
     shared: () => null, setShared: () => {}, PICKER_KEY: 'picker', SWITCH_KEY: 'switch',
-    palette: () => ({}), programIcon: () => null, motionOn: () => false, statusInfo: () => ({ key: 'idle', label: 'Idle' }),
+    palette: () => ({}), programIcon: () => null, motionOn: () => false, withAlpha: (c) => c, statusInfo: () => ({ key: 'idle', label: 'Idle' }),
     T: { type: {}, space: {}, radius: {}, hit: {}, icon: {}, duration: {} }, UI: '', MONO: '',
     exec: async () => { calls++; return { stdout: JSON.stringify({ model: 'test', effort: 'high', title: current.address }) }; },
   }, 'globalThis.Panel = ZeroHerdr;');

@@ -2,10 +2,10 @@ import { View, div, svg, image } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
 import { agents, appHome, closeOverlay, exec, focused, hc, home, layout, nextCommand, notify, openOverlay, panes, run, shared, setShared, spaces, theme } from "herdr";
 // C11: Z no longer calls setAgentOrder — the drawer owns traversal order.
-import { folder, formatDuration, formatResetTime, parseGitStatus, parseKimiUsage, taskTitle, cleanTitle } from "./data.js";
+import { folder, formatDuration, formatResetCountdown, formatResetTime, formatResetTooltip, parseGitStatus, parseKimiUsage, quotaPace, taskTitle, cleanTitle } from "./data.js";
 import { T, UI, MONO } from "./zero-tokens.js";
 import { palette, statusInfo } from "./zero-theme.js";
-import { motionOn, programIcon } from "./zero-kit.js";
+import { motionOn, programIcon, withAlpha } from "./zero-kit.js";
 import { attemptSwitch, invalidateSwitch, noteCodexData, switchState } from "./switcher.js";
 import { PICK_KEY, SWITCH_KEY, PICKER_KEY } from "./switch-shared.js";
 import { cardMaterial } from "./material.js";
@@ -538,7 +538,7 @@ export default class ZeroHerdr extends View {
           .child(div().id('context-needle').absolute().left(n + '%')
             .ml(n === 100 ? -1.5 : n === 0 ? 0 : -.75).top(4).w(1.5).h(18).rounded_full().bg(color)));
     };
-    const valueText = (value, size = 23, color = p.text) => h_flex().items_baseline().gap(3)
+    const valueText = (value, size = 23, color = p.text) => h_flex().flex_none().items_baseline().gap(3)
       .child(txt(percent(value) == null ? '—' : Math.round(percent(value)), size, color).font_weight(500))
       .when(percent(value) != null, el => el.child(txt('%', 11, p.muted)));
     const chip = (kind, value, caption) => h_flex().id('codex-' + kind + '-picker').min_w(0).flex_1().h(34).px(9).gap(6)
@@ -606,29 +606,45 @@ export default class ZeroHerdr extends View {
       const resetParts = reset?.split(' ') ?? [];
       const resetTime = resetParts.pop() ?? '';
       const resetDate = resetParts.join(' ');
-      const tickCount = id === 'quota-weekly' ? 7 : 12;
       const windowMs = id === 'quota-weekly' ? 7 * 24 * 60 * 60_000 : 5 * 60 * 60_000;
-      const elapsed = reset ? Math.max(0, Math.min(100, 100 - (resetAt * 1000 - Date.now()) / windowMs * 100)) : 0;
-      const activeTick = Math.min(tickCount - 1, Math.floor(elapsed / 100 * tickCount));
-      const resetRail = reset ? h_flex().min_w(0).flex_1().items_center().gap(7)
-        .tooltip('Next reset · ' + new Date(resetAt * 1000).toString() + ' · ' + TZ_LABEL)
-        .child(h_flex().id(id + '-reset-rail').w(70).h(22).flex_none().items_center().justify_between()
-          .children(Array.from({ length: tickCount }, (_, i) => {
-            const active = i === activeTick;
-            const major = i === 0 || i === tickCount - 1 || i % 3 === 0;
-            return div().w(active ? 2.5 : 1.5).h(active ? 13 : major ? 8 : 4).rounded_full()
-              .bg(active ? p.accent : i < activeTick ? p.dim : p.track)
-              .when(active && motionOn(), el => el.loop('opacity', { from: 0.35, to: 1, period: 1600 }));
-          })))
-        .child(h_flex().min_w(0).items_baseline().gap(4)
-          .when(Boolean(resetDate), el => el.child(txt(resetDate, 9.5, p.dim)))
-          .child(mono(resetTime, 11.5, p.muted).font_weight(500))) : null;
+      const pace = reset ? quotaPace(value, resetAt, windowMs) : { elapsed: 0, state: 'healthy', label: '' };
+      const remaining = reset ? formatResetCountdown(resetAt) : null;
+      const activeState = pace.state !== 'healthy';
+      const tone = pace.state === 'critical' ? p.blocked : pace.state === 'resetting' ? p.done : p.accent;
+      const shimmerPeriod = pace.state === 'critical' ? 1300 : pace.state === 'resetting' ? 1800 : pace.state === 'fast' ? 2200 : 4200;
+      const fillPercent = Math.max(4, Math.min(99, pace.elapsed));
+      const fillAlpha = pace.state === 'critical' ? '34' : pace.state === 'resetting' ? '26' : pace.state === 'fast' ? '28' : '1c';
+      const shimmerOuter = pace.state === 'critical' ? '16' : activeState ? '10' : '08';
+      const shimmerCore = pace.state === 'critical' ? '36' : activeState ? '24' : '14';
+      const shimmerColor = pace.state === 'critical' ? p.text : tone;
+      const resetCapsule = reset ? div().id(id + '-reset-rail').relative().min_w(0).flex_1().h(24).rounded(7)
+        .overflow_hidden().bg(material.well)
+        .border(.5).border_color(pace.state === 'critical' ? withAlpha(tone, '88') : activeState ? withAlpha(tone, '55') : material.wellEdge)
+        .tooltip(formatResetTooltip(resetAt, TZ_LABEL, Date.now(), pace.label))
+        // Inset rounded liquid fill (matches inner radius of rounded(7) so corners never bleed out)
+        .child(div().absolute().top(1).bottom(1).left(1).w(fillPercent + '%').min_w(8).rounded(6)
+          .bg(withAlpha(tone, fillAlpha)))
+        // Feathered shimmer beam gliding across the capsule
+        .when(motionOn(), el => el.child(h_flex().id(id + '-shimmer').absolute().top(1).bottom(1).left(-40)
+          .loop('left', { from: -40, to: 185, period: shimmerPeriod, easing: 'ease-in-out' })
+          .child(div().h_full().w(12).bg(withAlpha(shimmerColor, shimmerOuter)))
+          .child(div().h_full().w(16).bg(withAlpha(shimmerColor, shimmerCore)))
+          .child(div().h_full().w(12).bg(withAlpha(shimmerColor, shimmerOuter)))))
+        // Clean single-row readout: reset time left, remaining countdown right
+        .child(h_flex().relative().w_full().h_full().px(8).items_center().gap(4)
+          .when(Boolean(resetDate), el => el.child(txt(resetDate, 9.5, activeState ? p.muted : p.dim).line_height(1)))
+          .child(mono(resetTime, 11, activeState ? p.text : p.muted).font_weight(500).line_height(1))
+          .child(div().flex_1())
+          .when(Boolean(remaining), el => el.child(mono(remaining, 10, activeState ? tone : p.dim).font_weight(activeState ? 500 : 400).line_height(1).flex_none()))) : null;
       return h_flex().id(id).w_full().items_center().gap(10)
         .when(Boolean(credit), el => el.tooltip(credit.tip))
-        .child(div().size(30).flex_none().rounded(9).bg(material.well).flex().items_center().justify_center().child(mono(badge, 10, p.muted)))
+        .child(div().size(30).flex_none().rounded(9).bg(material.well)
+          .border(.5).border_color(pace.state === 'critical' ? withAlpha(tone, '88') : activeState ? withAlpha(tone, '55') : material.wellEdge)
+          .flex().items_center().justify_center()
+          .child(mono(badge, 10, activeState ? tone : p.muted).font_weight(activeState ? 500 : 400)))
         .child(v_flex().flex_1().min_w(0).gap(7)
-          .child(h_flex().w_full().items_center().justify_between().gap(6)
-            .when(Boolean(reset), el => el.child(resetRail))
+          .child(h_flex().w_full().items_center().justify_between().gap(8)
+            .when(Boolean(reset), el => el.child(resetCapsule))
             .when(!reset, el => el.child(txt(name, 12).min_w(0).truncate()))
             .child(credit ? h_flex().flex_none().items_baseline().gap(3)
               .child(txt(credit.remaining.toFixed(2).replace(/\.00$/, '').replace(/(\.\d)0$/, '$1'), 19, low ? p.blocked : p.text).font_weight(500))

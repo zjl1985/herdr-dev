@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { folder, formatDuration, formatResetTime, parseGitStatus, parseKimiUsage, taskTitle, cleanTitle, isValidModelOption, switchLanded } from "../mods/zero-herdr/data.js";
+import { folder, formatDuration, formatResetCountdown, formatResetTime, formatResetTooltip, parseGitStatus, parseKimiUsage, quotaPace, taskTitle, cleanTitle, isValidModelOption, switchLanded } from "../mods/zero-herdr/data.js";
 
 test("folder shortens home paths", () => {
   assert.equal(folder(null, "/h"), "");
@@ -26,6 +26,34 @@ test("formatResetTime shows an absolute local reset timestamp", () => {
   assert.equal(formatResetTime(at(2027, 0, 1, 0, 0), now), "2027/1/1 00:00");
   assert.equal(formatResetTime(null, now), null);
   assert.equal(formatResetTime("invalid", now), null);
+});
+
+test("formatResetCountdown, quotaPace and formatResetTooltip combine quota and time", () => {
+  const now = new Date(2026, 10, 25, 23, 0).getTime();
+  const inMinutes = (m) => (now + m * 60_000) / 1000;
+  assert.equal(formatResetCountdown(inMinutes(0), now), "now");
+  assert.equal(formatResetCountdown(inMinutes(0.5), now), "<1m");
+  assert.equal(formatResetCountdown(inMinutes(28), now), "28m");
+  assert.equal(formatResetCountdown(inMinutes(4 * 60 + 37), now), "4h 37m");
+  assert.equal(formatResetCountdown(inMinutes(6 * 24 * 60 + 15 * 60), now), "6d 15h");
+  assert.equal(formatResetCountdown(null, now), null);
+
+  const fiveH = 5 * 60 * 60_000;
+  // 90% left with 4.5h remaining -> healthy
+  assert.equal(quotaPace(90, inMinutes(270), fiveH, now).state, "healthy");
+  // 45% left (55% used) when only 20% of window elapsed -> burning fast
+  assert.equal(quotaPace(45, inMinutes(240), fiveH, now).state, "fast");
+  // 15% left with 3h remaining -> critical
+  assert.equal(quotaPace(15, inMinutes(180), fiveH, now).state, "critical");
+  // 90% left with 20m remaining -> resetting soon (good news, not critical)
+  assert.equal(quotaPace(90, inMinutes(20), fiveH, now).state, "resetting");
+  // 12% left with 10m remaining -> resetting soon (about to refill)
+  assert.equal(quotaPace(12, inMinutes(10), fiveH, now).state, "resetting");
+  // 3% left with 10m remaining -> critical (nearly empty right now)
+  assert.equal(quotaPace(3, inMinutes(10), fiveH, now).state, "critical");
+
+  const tip = formatResetTooltip(inMinutes(4 * 60 + 37), "UTC+08:00", now, "On pace");
+  assert.equal(tip, "Resets 11/26 03:37 · in 4h 37m · On pace · UTC+08:00");
 });
 
 test("parseGitStatus handles branch, ahead/behind and changes", () => {

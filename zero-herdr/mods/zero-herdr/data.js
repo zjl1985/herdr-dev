@@ -31,6 +31,67 @@ export function formatResetTime(epochSeconds, now = Date.now()) {
   return `${year}${reset.getMonth() + 1}/${reset.getDate()} ${time}`;
 }
 
+/** Compact remaining time until a quota reset: "28m", "4h 37m", "6d 15h". */
+export function formatResetCountdown(epochSeconds, now = Date.now()) {
+  if (epochSeconds == null || epochSeconds === "" || typeof epochSeconds === "boolean") return null;
+  const target = Number(epochSeconds) * 1000;
+  if (!Number.isFinite(target)) return null;
+  const ms = target - now;
+  if (ms <= 0) return "now";
+  const totalMinutes = Math.floor(ms / 60_000);
+  if (totalMinutes < 1) return "<1m";
+  if (totalMinutes < 60) return `${totalMinutes}m`;
+  const totalHours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (totalHours < 24) return minutes ? `${totalHours}h ${minutes}m` : `${totalHours}h`;
+  const days = Math.floor(totalHours / 24);
+  const hours = totalHours % 24;
+  return hours ? `${days}d ${hours}h` : `${days}d`;
+}
+
+/** Combined quota + time pace model for a reset window. */
+export function quotaPace(remainingQuota, epochSeconds, windowMs, now = Date.now()) {
+  const target = Number(epochSeconds) * 1000;
+  if (!Number.isFinite(target) || !Number.isFinite(windowMs) || windowMs <= 0) {
+    return { elapsed: 0, remainingMs: 0, state: "healthy", label: "On pace" };
+  }
+  const remainingMs = Math.max(0, target - now);
+  const remainingTimePct = Math.max(0, Math.min(100, (remainingMs / windowMs) * 100));
+  const elapsed = 100 - remainingTimePct;
+  const left = remainingQuota != null && Number.isFinite(Number(remainingQuota))
+    ? Math.max(0, Math.min(100, Number(remainingQuota)))
+    : null;
+  const used = left != null ? 100 - left : null;
+  const resettingThreshold = windowMs >= 24 * 60 * 60_000 ? 6 * 60 * 60_000 : 30 * 60_000;
+  const resettingSoon = remainingMs <= resettingThreshold;
+
+  if (left != null && (left <= 5 || (left <= 20 && remainingTimePct > 10))) {
+    return { elapsed, remainingMs, state: "critical", label: "Low quota" };
+  }
+  if (resettingSoon) {
+    return { elapsed, remainingMs, state: "resetting", label: "Resetting soon" };
+  }
+  if (used != null && (used > elapsed + 20 || (left <= 35 && remainingTimePct > 25))) {
+    return { elapsed, remainingMs, state: "fast", label: "Burning fast" };
+  }
+  return { elapsed, remainingMs, state: "healthy", label: "On pace" };
+}
+
+/** Concise tooltip text for a quota reset (avoids wide Date.toString overflow). */
+export function formatResetTooltip(epochSeconds, tzLabel = "", now = Date.now(), paceLabel = "") {
+  if (epochSeconds == null || epochSeconds === "" || typeof epochSeconds === "boolean") return "";
+  const reset = new Date(Number(epochSeconds) * 1000);
+  if (!Number.isFinite(reset.getTime())) return "";
+  const date = `${reset.getMonth() + 1}/${reset.getDate()}`;
+  const time = `${String(reset.getHours()).padStart(2, "0")}:${String(reset.getMinutes()).padStart(2, "0")}`;
+  const left = formatResetCountdown(epochSeconds, now);
+  const parts = [`Resets ${date} ${time}`];
+  if (left) parts.push(`in ${left}`);
+  if (paceLabel) parts.push(paceLabel);
+  if (tzLabel) parts.push(tzLabel);
+  return parts.join(" · ");
+}
+
 /** `git status --porcelain=v2 --branch` output -> {branch, changed, ahead, behind}. */
 export function parseGitStatus(output) {
   const result = { branch: null, changed: 0, ahead: 0, behind: 0 };
