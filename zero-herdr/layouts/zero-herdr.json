@@ -117,7 +117,7 @@
                   },
                   "focus": {
                     "width": 0.5,
-                    "color": "ring"
+                    "color": "input"
                   },
                   "shadow": "sm",
                   "header": {

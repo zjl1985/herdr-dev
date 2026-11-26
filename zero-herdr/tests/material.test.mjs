@@ -18,3 +18,26 @@ test('a translucent white border stays faint on a dark card', () => {
   assert.ok(rgb(material.edge).every((channel, i) => channel >= face[i] && channel - face[i] < 20));
   assert.equal(cardMaterial({ ...p, line: '#ffffff00' }).edge, material.top);
 });
+
+test('high-contrast dark themes keep cards near surface and upgrade low-contrast idle text', () => {
+  const paperDark = {
+    bg: '#1c1c1e', chrome: '#111111', inset: '#111111', text: '#ffffff',
+    line: '#2c2c30', track: '#3a3a3e', idle: '#5c5c62', muted: '#8c8c8c',
+  };
+  const m = cardMaterial(paperDark);
+  // Card top stays close to terminal surface (#1c1c1e) instead of washing out grey
+  assert.ok(rgb(m.top)[0] - rgb(paperDark.bg)[0] <= 5);
+  // Recessed well stays gently recessed rather than collapsing into pure black
+  assert.ok(rgb(m.top)[0] - rgb(m.well)[0] <= 8);
+  // Low-contrast idle falls back to muted
+  assert.equal(m.idleText, '#8c8c8c');
+
+  const claudeDark = {
+    bg: '#1f1e1b', chrome: '#1f1e1b', inset: '#141413', text: '#faf9f5',
+    line: '#2c2a26', track: '#3d3a35', idle: '#a09d96', muted: '#a09d96',
+  };
+  const c = cardMaterial(claudeDark);
+  // When surface matches chrome, card lifts gently for separation and preserves readable idle
+  assert.ok(rgb(c.top)[0] > rgb(claudeDark.bg)[0]);
+  assert.equal(c.idleText, '#a09d96');
+});

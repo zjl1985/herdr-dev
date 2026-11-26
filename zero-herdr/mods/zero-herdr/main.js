@@ -550,7 +550,7 @@ export default class ZeroHerdr extends View {
       .bg(material.top)
       .border(.5).border_color(material.edge).shadow_md();
     const heading = (name, right = null) => h_flex().w_full().items_center().gap(7)
-      .child(dot(p.accent, 4)).child(txt(name, 12).font_weight(500)).child(div().flex_1())
+      .child(txt(name, 12).font_weight(500)).child(div().flex_1())
       .when(Boolean(right), el => el.child(right));
     const action = (id, glyph, tip, fn) => div().id(id).size(24).flex_none().flex().items_center().justify_center()
       .rounded(7).cursor_pointer().hover(s => s.bg(p.hover)).tooltip(tip).on_click(fn).child(icon(glyph));
@@ -645,6 +645,8 @@ export default class ZeroHerdr extends View {
     };
 
     const motionEnabled = motionOn();
+    const isResting = !lead || lead.status === 'idle' || lead.status === 'unknown';
+    const bannerColor = isResting ? (material.idleText ?? stateColor) : stateColor;
     const session = card('session-card')
       .child(h_flex().w_full().items_center().gap(7)
         .child(programIcon(lead?.program, 16, p.muted) ?? dot(stateColor, 6))
@@ -662,11 +664,11 @@ export default class ZeroHerdr extends View {
       .child(h_flex().id('session-signal-banner').w_full().h(34).px(10).rounded(9).border(.5)
         .border_color(working || lead?.status === 'blocked' ? withAlpha(stateColor, '44') : material.wellEdge)
         .bg(material.well).items_center().gap(7)
-        .child(txt(lead ? info.label : 'No agent', 11, stateColor).font_weight(500))
+        .child(txt(lead ? info.label : 'No agent', 11, bannerColor).font_weight(500))
         .when(Boolean(elapsed), el => el.child(mono(elapsed, 10)))
         .child(div().flex_1())
         .child(h_flex().h(16).items_end().gap(2).flex_none().tooltip('Session activity')
-          .children([7, 12, 16, 10, 14, 8, 11].map((height, i) => div().id('signal-bar-' + i).w(2).h(working ? height : 3).rounded_full().bg(stateColor)
+          .children([7, 12, 16, 10, 14, 8, 11].map((height, i) => div().id('signal-bar-' + i).w(2).h(working ? height : 3).rounded_full().bg(bannerColor)
             .when(working && motionEnabled, el => el.loop('height', { from: 3 + i % 3, to: height, period: 880 + i * 137 }))))))
       .child(txt(m.title, 16).font_weight(500).line_height(1.3).max_h(42).overflow_hidden().tooltip(String(m.title)))
       .child(h_flex().w_full().items_center().gap(4)
@@ -716,7 +718,7 @@ export default class ZeroHerdr extends View {
       .when(hasQuota, el => el.child(heading('Available quota')));
     const quotaRow = (id, name, value, badge, credit = null, resetAt = null) => {
       const low = value != null && value <= 20;
-      const color = low ? p.blocked : p.accent;
+      const color = low ? p.blocked : withAlpha(p.accent, 'c4');
       const reset = formatResetTime(resetAt);
       const resetParts = reset?.split(' ') ?? [];
       const resetTime = resetParts.pop() ?? '';
@@ -807,7 +809,7 @@ export default class ZeroHerdr extends View {
       .bg(material.well).border(.5).border_color(material.wellEdge)
       .child(mono(label, 10, color).line_height(1));
     const workspace = card('workspace-card')
-      .child(heading('Workspace', icon('branch', 15, p.accent)))
+      .child(heading('Workspace', icon('branch', 15, git?.changed ? p.accent : p.muted)))
       .child(h_flex().w_full().gap(10).items_center()
         .child(v_flex().flex_1().min_w(0).gap(4)
           .child(h_flex().id('workspace-branch-copy').min_w(0).px(4).py(2).ml(-4).rounded(6).items_center().gap(5)

@@ -29,7 +29,7 @@ function button(t, id, name, tip, command, args, danger = false) {
     .justify_center()
     .rounded(6)
     .cursor_pointer()
-    .text_color(t.dim)
+    .text_color(t.muted)
     .hover((s) => s.bg(danger ? t.blocked + "1f" : t.hover).text_color(danger ? t.blocked : t.foreground))
     .tooltip(tip)
     .on_mouse_down("left", (_e, cx) => {
@@ -82,9 +82,6 @@ export default class ClaudePane extends View {
         h_flex()
           .flex_none()
           .gap(1)
-          .px(2)
-          .rounded(7)
-          .bg(t.canvas)
           .items_center()
           .child(button(t, `cp-r-${pane}`, "split-right", "Split right", "pane.split", { direction: "right", pane }))
           .child(button(t, `cp-d-${pane}`, "split-down", "Split down", "pane.split", { direction: "down", pane }))

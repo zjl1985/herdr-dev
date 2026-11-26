@@ -12,16 +12,31 @@ function mix(a, b, amount) {
   return '#' + x.slice(0, 3).map((v, i) => Math.round(v + (y[i] - v) * amount * y[3])
     .toString(16).padStart(2, '0')).join('');
 }
+function luma(c) {
+  return c ? c[0] * .2126 + c[1] * .7152 + c[2] * .0722 : 0;
+}
 export function cardMaterial(p) {
   const base = mix(p.inset ?? p.bg, p.bg, 1);
   const surface = rgba(base);
-  const dark = surface && (surface[0] * .2126 + surface[1] * .7152 + surface[2] * .0722) < 128;
-  const top = dark ? mix(base, p.text, .055) : base;
-  const well = dark ? mix(top, p.inset, .8) : mix(top, p.track, .3);
+  const chrome = rgba(p.chrome ?? p.inset ?? p.bg);
+  const dark = surface && luma(surface) < 128;
+  // Keep cards near the terminal surface on dark themes that already lift
+  // surface off chrome (e.g. #1c1c1e on #111111), and only add a gentle lift
+  // when surface matches chrome (e.g. claude-dark).
+  const chromeGap = surface && chrome ? Math.abs(luma(surface) - luma(chrome)) : 0;
+  const lift = chromeGap >= 6 ? .01 : .026;
+  const top = dark ? mix(base, p.text, lift) : base;
+  const well = dark ? mix(top, p.inset, .45) : mix(top, p.track, .3);
+  const wellRgb = rgba(well);
+  const idleRgb = rgba(p.idle);
+  const idleText = wellRgb && idleRgb && Math.abs(luma(idleRgb) - luma(wellRgb)) < 85
+    ? (p.muted ?? p.idle)
+    : (p.idle ?? p.muted);
   return {
     top,
-    edge: mix(top, p.line, dark ? .65 : .3),
+    edge: mix(top, p.line, dark ? .55 : .3),
     well,
-    wellEdge: mix(well, p.line, .25),
+    wellEdge: mix(well, p.line, dark ? .35 : .25),
+    idleText,
   };
 }
