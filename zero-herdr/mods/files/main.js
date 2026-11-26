@@ -1,9 +1,19 @@
 // A lazy file browser for the focused pane's folder, with bounded read-only previews.
 import { View, div, svg } from "gpui-kit";
 import { v_flex, h_flex, Editor, EditorState } from "gpui-base";
-import { spaces, panes, focused, exec, readTextFile, watchFolder, theme, settings, window, openOverlay } from "herdr";
+import { spaces, panes, focused, exec, readTextFile, watchFolder, theme, settings, window, openOverlay, layout } from "herdr";
 import { T, UI } from "./zero-tokens.js";
 import { palette } from "./zero-theme.js";
+import { closePanelSmooth, panelClosing, panelMotion, trackPanelReveal } from "./zero-kit.js";
+
+function findNode(node, id) {
+  if (node?.id === id) return node;
+  for (const child of node?.children ?? []) {
+    const found = findNode(child, id);
+    if (found) return found;
+  }
+  return null;
+}
 
 function location() {
   const space = spaces().find(s => s.active), f = focused();
@@ -174,11 +184,21 @@ export default class Files extends View {
   render(cx) {
     if (key() !== this.context?.key) this.refresh(cx);
     const t = theme();
-    return v_flex().id("files").size_full().min_h(0).rounded(10).overflow_hidden().bg(t.background).border_1().border_color(t.border).text_color(t.foreground).font_family(UI).text_size(12)
+    const rootTree = typeof layout === "function" ? layout() : null;
+    const panel = findNode(rootTree, "panel");
+    const body = findNode(rootTree, "panel-body");
+    const visibleNow = Boolean(!panel || (!panel.hidden && (!body || body.active === "files")));
+    const settled = trackPanelReveal(this, visibleNow, cx);
+    const closing = panelClosing("panel");
+    return panelMotion(v_flex().id("files").size_full().min_h(0).rounded(10).overflow_hidden().bg(t.background).border_1().border_color(t.border).text_color(t.foreground).font_family(UI).text_size(12)
       .child(h_flex().h(42).flex_none().px(14).gap(8).items_center().bg(t.surface)
         .when(Boolean(this.file), el => el.child(div().id("files-back").w(20).cursor_pointer().text_color(t.muted).on_click((_e, cx) => { this.show(null); cx.notify(); }).child("←")))
         .child(div().font_semibold().child("Files"))
-        .child(div().flex_1().min_w(0).truncate().text_right().text_size(12).text_color(t.dim).child(this.file ?? this.root?.split(/[\\/]/).pop() ?? "")))
+        .child(div().flex_1().min_w(0).truncate().text_right().text_size(12).text_color(t.dim).child(this.file ?? this.root?.split(/[\\/]/).pop() ?? ""))
+        .child(div().id("files-close").size(22).flex_none().flex().items_center().justify_center().rounded(6).cursor_pointer()
+          .text_color(t.dim).hover(s => s.bg(t.hover).text_color(t.foreground)).tooltip("Close files panel")
+          .on_click((_e, cx) => closePanelSmooth("panel", cx))
+          .child(svg("mods/zero-ui/icons/close.svg").size(12))))
       .when(!this.file, el => el.child(v_flex().id("files-tree").flex_1().min_h(0).overflow_y_scrollbar().p(6).children(this.rows("", 0, [], t))
         .when(Boolean(this.error) || this.loading, el => el.child(
           div().p(8).text_size(12).text_color(this.error ? t.blocked : t.muted)
@@ -188,6 +208,6 @@ export default class Files extends View {
           .child(svg("mods/zero-ui/icons/empty-folder.svg").size(48).text_color(t.dim))
           .child(div().text_size(12).text_color(t.muted).font_family(UI).child(this.root ? "No files here" : "No folder"))))
         .when(this.limited, el => el.child(div().p(8).text_size(11).text_color(t.dim).child("File list limited to 500 entries per folder and 5,000 total")))))
-      .when(Boolean(this.file), el => el.child(this.code ? Editor.new(this.code).flex_1().min_h(0) : div().p(12).text_color(t.dim).child(this.fileError || "Loading file…")));
+      .when(Boolean(this.file), el => el.child(this.code ? Editor.new(this.code).flex_1().min_h(0) : div().p(12).text_color(t.dim).child(this.fileError || "Loading file…"))), { settled, closing });
   }
 }

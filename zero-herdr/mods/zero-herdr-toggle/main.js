@@ -1,6 +1,7 @@
 import { View, div, svg } from "gpui-kit";
 import { v_flex } from "gpui-base";
-import { agents, layout, run, theme } from "herdr";
+import { agents, layout, theme } from "herdr";
+import { openPanelSmooth } from "./zero-kit.js";
 
 function findNode(node, id) {
   if (node?.id === id) return node;
@@ -40,7 +41,7 @@ export default class ZeroHerdrToggle extends View {
       .text_color(t.dim)
       .hover((style) => style.bg(t.hover).text_color(t.foreground))
       .tooltip("All spaces' agent status · open the panel")
-      .on_click(() => run("layout.show", { id: "zero-herdr" }))
+      .on_click(() => openPanelSmooth("zero-herdr"))
       .child(
         div()
           .size(6)

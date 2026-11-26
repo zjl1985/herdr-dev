@@ -3,6 +3,7 @@ import { h_flex } from "gpui-base";
 import { spaces, agents, panes, focused, layout, home, theme, run, window as appWindow, keys } from "herdr";
 
 import { UI, MONO } from "./zero-tokens.js";
+import { closePanelSmooth, openPanelSmooth } from "./zero-kit.js";
 
 function findNode(node, id) {
   if (node?.id === id) return node;
@@ -56,16 +57,15 @@ function pill(id, t, tip, onClick) {
 }
 
 export default class ZeroStatus extends View {
-  toggleSidePanel(tabId) {
+  toggleSidePanel(tabId, cx) {
     const root = layout();
     const panel = findNode(root, "panel");
     const body = findNode(root, "panel-body");
     const isOpen = panel && !panel.hidden && body?.active === tabId;
     if (isOpen) {
-      run("layout.hide", { id: "panel" });
+      closePanelSmooth("panel", cx);
     } else {
-      run("layout.select", { stack: "panel-body", child: tabId });
-      run("layout.show", { id: "panel" });
+      openPanelSmooth("panel", tabId);
     }
   }
 
@@ -221,8 +221,8 @@ export default class ZeroStatus extends View {
         bar
           .child(sep(t))
           .child(
-            pill("zero-status-branch", t, "Toggle Git changes", () =>
-              this.toggleSidePanel("changes")
+            pill("zero-status-branch", t, "Toggle Git changes", (_e, cx) =>
+              this.toggleSidePanel("changes", cx)
             )
               .child(svg("mods/zero-ui/icons/branch.svg").size(11.5).text_color(t.accent))
               .child(div().max_w(140).truncate().text_color(t.muted).child(branch))
@@ -232,8 +232,8 @@ export default class ZeroStatus extends View {
         bar
           .child(sep(t))
           .child(
-            pill("zero-status-cwd", t, `${rawCwd || cwd} · Toggle files`, () =>
-              this.toggleSidePanel("files")
+            pill("zero-status-cwd", t, `${rawCwd || cwd} · Toggle files`, (_e, cx) =>
+              this.toggleSidePanel("files", cx)
             ).child(div().max_w(200).truncate().text_color(t.dim).child(cwd))
           )
       )
@@ -247,7 +247,7 @@ export default class ZeroStatus extends View {
               "zero-status-panel-toggle",
               t,
               statusOpen ? "Hide telemetry panel" : "Show telemetry panel",
-              () => run("layout.toggle", { id: "zero-herdr" })
+              (_e, cx) => (statusOpen ? closePanelSmooth("zero-herdr", cx) : openPanelSmooth("zero-herdr"))
             )
               .child(
                 div()

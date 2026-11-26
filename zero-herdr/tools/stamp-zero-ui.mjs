@@ -32,6 +32,7 @@ const CONSUMERS = [
   "files",
   "files-menu",
   "zero-picker",
+  "zero-changes",
 ];
 
 const check = process.argv.includes("--check");

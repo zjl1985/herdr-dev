@@ -3,8 +3,85 @@
 // consuming mod by tools/stamp-zero-ui.mjs.
 import { div, svg, image } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
+import { run, setShared, shared } from "herdr";
 import { T, UI, MONO } from "./zero-tokens.js";
 import { palette } from "./zero-theme.js";
+
+export const PANEL_CLOSE_KEY = "zero.panel.closing";
+export const PANEL_CLOSE_MS = 175;
+
+/** True while a docked panel is playing its damped close glide before layout.hide. */
+export function panelClosing(panelId) {
+  return Boolean(shared(PANEL_CLOSE_KEY)?.[panelId]);
+}
+
+/** Play damped spring glide-out, then hide the layout node. */
+export function closePanelSmooth(panelId, cx) {
+  if (!motionOn() || !cx?.timer?.after) {
+    run("layout.hide", { id: panelId });
+    return;
+  }
+  const prev = shared(PANEL_CLOSE_KEY) ?? {};
+  if (prev[panelId]) return;
+  setShared(PANEL_CLOSE_KEY, { ...prev, [panelId]: Date.now() });
+  cx.timer.after(PANEL_CLOSE_MS, () => {
+    run("layout.hide", { id: panelId });
+    const cur = shared(PANEL_CLOSE_KEY) ?? {};
+    if (cur[panelId]) {
+      const next = { ...cur };
+      delete next[panelId];
+      setShared(PANEL_CLOSE_KEY, next);
+    }
+  });
+}
+
+/** Show a layout panel (and optional stack tab), clearing any in-flight close state. */
+export function openPanelSmooth(panelId, stackTab = null) {
+  const cur = shared(PANEL_CLOSE_KEY) ?? {};
+  if (cur[panelId]) {
+    const next = { ...cur };
+    delete next[panelId];
+    setShared(PANEL_CLOSE_KEY, next);
+  }
+  if (stackTab) run("layout.select", { stack: "panel-body", child: stackTab });
+  run("layout.show", { id: panelId });
+}
+
+/** Track panel visibility transitions (mount or unhide) so spring entry triggers cleanly. */
+export function trackPanelReveal(view, visibleNow, cx) {
+  if (!motionOn() || !cx?.timer?.after) {
+    view._panelSettled = true;
+    view._panelWasHidden = !visibleNow;
+    return true;
+  }
+  if (!visibleNow) {
+    view._panelWasHidden = true;
+    view._panelSettled = false;
+    return false;
+  }
+  if (view._panelSettled === undefined || view._panelWasHidden) {
+    view._panelWasHidden = false;
+    view._panelSettled = false;
+    if (view._panelRevealTimer) try { view._panelRevealTimer.cancel(); } catch {}
+    view._panelRevealTimer = cx.timer.after(16, (cx) => {
+      view._panelSettled = true;
+      cx.notify();
+    });
+  }
+  return Boolean(view._panelSettled);
+}
+
+/** Attach GPUI spring slide + opacity damping to a docked panel's root element. */
+export function panelMotion(el, { settled = true, closing = false, distance = 22 } = {}) {
+  if (!motionOn()) return el;
+  const shown = settled && !closing;
+  return el
+    .relative()
+    .left(shown ? 0 : closing ? distance + 4 : distance)
+    .opacity(shown ? 1 : 0)
+    .spring("left", closing ? { response: 210, damping: 0.96 } : { response: 270, damping: 0.84 })
+    .transition("opacity", { duration: closing ? 150 : 185, easing: closing ? "ease-in" : "ease-out" });
+}
 
 /** H04: local reduced-motion switch (no system-preference API exists in the
  *  shell). "1" stops every looping animation; dots and bars keep their

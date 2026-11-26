@@ -5,7 +5,7 @@ import { agents, appHome, closeOverlay, exec, focused, hc, home, layout, nextCom
 import { effortProfile, folder, formatDuration, formatResetCountdown, formatResetTime, formatResetTooltip, normalizeModelName, parseGitStatus, parseKimiUsage, quotaPace, taskTitle, cleanTitle } from "./data.js";
 import { T, UI, MONO } from "./zero-tokens.js";
 import { palette, statusInfo } from "./zero-theme.js";
-import { motionOn, programIcon, withAlpha } from "./zero-kit.js";
+import { closePanelSmooth, motionOn, openPanelSmooth, panelClosing, panelMotion, programIcon, trackPanelReveal, withAlpha } from "./zero-kit.js";
 import { attemptSwitch, invalidateSwitch, noteCodexData, switchState } from "./switcher.js";
 import { PICK_KEY, SWITCH_KEY, PICKER_KEY } from "./switch-shared.js";
 import { cardMaterial } from "./material.js";
@@ -170,17 +170,16 @@ export default class ZeroHerdr extends View {
     cx.notify();
   }
 
-  toggleSidePanel(tabId) {
+  toggleSidePanel(tabId, cx) {
     const find = (node, id) => node?.id === id ? node : (node?.children ?? []).map((c) => find(c, id)).find(Boolean);
     const root = layout();
     const panel = find(root, "panel");
     const body = find(root, "panel-body");
     const isOpen = panel && !panel.hidden && body?.active === tabId;
     if (isOpen) {
-      run("layout.hide", { id: "panel" });
+      closePanelSmooth("panel", cx);
     } else {
-      run("layout.select", { stack: "panel-body", child: tabId });
-      run("layout.show", { id: "panel" });
+      openPanelSmooth("panel", tabId);
     }
   }
 
@@ -659,7 +658,7 @@ export default class ZeroHerdr extends View {
           })
           .child(icon('motion', 14, motionEnabled ? p.muted : p.dim))
           .when(!motionEnabled, el => el.child(div().absolute().top(3).right(3).size(4.5).rounded_full().bg(p.blocked))))
-        .child(action('status-close', 'panel-right', 'Hide status panel', () => run('layout.hide', { id: 'zero-herdr' }))))
+        .child(action('status-close', 'panel-right', 'Hide status panel', (_e, cx) => closePanelSmooth('zero-herdr', cx))))
       .child(h_flex().id('session-signal-banner').w_full().h(34).px(10).rounded(9).border(.5)
         .border_color(working || lead?.status === 'blocked' ? withAlpha(stateColor, '44') : material.wellEdge)
         .bg(material.well).items_center().gap(7)
@@ -678,7 +677,7 @@ export default class ZeroHerdr extends View {
           .child(icon('folder', 12, this.copied === 'cwd' ? p.done : p.muted))
           .child(mono(this.copied === 'cwd' ? 'Copied path' : (folder(m.cwd, home()) || 'No folder'), 10.5, this.copied === 'cwd' ? p.done : p.muted)
             .min_w(0).flex_1().truncate()))
-        .when(Boolean(m.cwd), el => el.child(action('session-open-files', 'sidebar', 'Toggle files panel', () => this.toggleSidePanel('files')))))
+        .when(Boolean(m.cwd), el => el.child(action('session-open-files', 'sidebar', 'Toggle files panel', (_e, cx) => this.toggleSidePanel('files', cx)))))
       .when(Boolean(model || effortInfo), el => el.child(h_flex().w_full().gap(6)
         .when(Boolean(model), row => row.child(modelChip(model, 'Select model')))
         .when(Boolean(effortInfo), row => row.child(effortChip(effortInfo)))))
@@ -821,7 +820,7 @@ export default class ZeroHerdr extends View {
         .when(Boolean(git), el => el.child(v_flex().id('workspace-open-changes').flex_none().items_end().gap(1)
           .px(8).py(4).mr(-4).rounded(8).cursor_pointer().hover(s => s.bg(p.hover))
           .tooltip('Toggle Git changes panel')
-          .on_click(() => this.toggleSidePanel('changes'))
+          .on_click((_e, cx) => this.toggleSidePanel('changes', cx))
           .child(txt(git.changed, 24, git.changed ? p.text : p.muted).font_weight(500).line_height(1))
           .child(txt(git.changed ? 'changed' : 'clean', 10, git.changed ? p.accent : p.muted)))))
       .when(Boolean(git?.ahead || git?.behind), el => el.child(h_flex().w_full().gap(6).items_center()
@@ -853,7 +852,9 @@ export default class ZeroHerdr extends View {
             .child(dot(stColor, 4.5, isWorking))
             .child(txt(st.label, 10, isBlocked || isWorking || agent.status === 'done' ? stColor : p.muted)));
       })));
-    return v_flex().id('zero-herdr-root').size_full().font_family(UI)
+    const settled = trackPanelReveal(this, this.visible(), cx);
+    const closing = panelClosing('zero-herdr');
+    return panelMotion(v_flex().id('zero-herdr-root').size_full().font_family(UI)
       // The layout owns the outer spacing. Keep card edges on its grid;
       // only reserve scroll space below the last card for its shadow.
       .child(v_flex().id('zero-herdr-body').w_full().flex_1().min_h(0).overflow_y_scrollbar().pb(12).gap(10)
@@ -861,6 +862,6 @@ export default class ZeroHerdr extends View {
         .when(hasContext || hasQuota || m.quotaStale, el => el.child(metrics))
         .when(m.isKiro, el => el.child(creditCard))
         .when(m.git.state !== 'idle' || Boolean(branch), el => el.child(workspace))
-        .when(list.length > 1, el => el.child(agentCard)));
+        .when(list.length > 1, el => el.child(agentCard))), { settled, closing });
   }
 }
