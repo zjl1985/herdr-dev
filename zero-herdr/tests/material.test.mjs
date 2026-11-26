@@ -42,3 +42,26 @@ test('high-contrast dark themes trim excess lift while claude-dark keeps full de
   assert.ok(rgb(c.top)[0] - rgb(c.well)[0] >= 15);
   assert.equal(c.idleText, '#a09d96');
 });
+
+test('glass mode returns translucent surfaces with specular rim while keeping idle contrast', () => {
+  const dark = {
+    bg: '#1f1e1b', chrome: '#1f1e1b', inset: '#00000000', text: '#faf9f5',
+    line: '#2c2a26', track: '#3d3a35', idle: '#a09d96', muted: '#a09d96',
+  };
+  const g = cardMaterial(dark, { glass: true });
+  assert.equal(g.top.length, 9);
+  assert.equal(g.well.length, 9);
+  assert.equal(g.edge.length, 9);
+  assert.equal(g.wellEdge.length, 9);
+  // Even when glass canvas inset is #00000000, well darkens below card face
+  assert.ok(rgb(g.well)[0] < rgb(g.top)[0]);
+  assert.equal(g.idleText, '#a09d96');
+
+  const light = {
+    bg: '#faf9f5', chrome: '#f5f0e8', inset: '#00000000', text: '#141413',
+    line: '#e6dfd8', track: '#d8cfc3', idle: '#8e8b82', muted: '#6c6a64',
+  };
+  const gl = cardMaterial(light, { glass: true });
+  assert.equal(gl.top.length, 9);
+  assert.ok(gl.top.endsWith('64'));
+});

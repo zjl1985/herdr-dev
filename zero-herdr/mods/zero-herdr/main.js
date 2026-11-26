@@ -5,7 +5,7 @@ import { agents, appHome, closeOverlay, exec, focused, hc, home, layout, nextCom
 import { effortProfile, folder, formatDuration, formatResetCountdown, formatResetTime, formatResetTooltip, normalizeModelName, parseGitStatus, parseKimiUsage, quotaPace, taskTitle, cleanTitle } from "./data.js";
 import { T, UI, MONO } from "./zero-tokens.js";
 import { palette, statusInfo } from "./zero-theme.js";
-import { closePanelSmooth, motionOn, openPanelSmooth, panelClosing, panelMotion, programIcon, trackPanelReveal, withAlpha } from "./zero-kit.js";
+import { closePanelSmooth, glassOn, motionOn, openPanelSmooth, panelClosing, panelMotion, programIcon, trackPanelReveal, withAlpha } from "./zero-kit.js";
 import { attemptSwitch, invalidateSwitch, noteCodexData, switchState } from "./switcher.js";
 import { PICK_KEY, SWITCH_KEY, PICKER_KEY } from "./switch-shared.js";
 import { cardMaterial } from "./material.js";
@@ -522,7 +522,8 @@ export default class ZeroHerdr extends View {
       cx.spawn((cx) => this.refreshGit(cx));
     }
     const p = palette(), m = this.model();
-    const material = cardMaterial(p);
+    const glass = glassOn();
+    const material = cardMaterial(p, { glass });
     const { space, tab, lead, pane } = m;
     const list = agents().filter(a => a.space === space?.id);
     const info = statusInfo(lead?.status);
@@ -548,7 +549,8 @@ export default class ZeroHerdr extends View {
     const icon = (name, size = 14, color = p.muted) => svg('mods/zero-ui/icons/' + name + '.svg').size(size).flex_none().text_color(color);
     const card = id => v_flex().id(id).w_full().flex_none().relative().p(14).gap(12).rounded(12)
       .bg(material.top)
-      .border(.5).border_color(material.edge).shadow_md();
+      .border(.5).border_color(material.edge)
+      .when(!glass, el => el.shadow_md());
     const heading = (name, right = null) => h_flex().w_full().items_center().gap(7)
       .child(txt(name, 12).font_weight(500)).child(div().flex_1())
       .when(Boolean(right), el => el.child(right));

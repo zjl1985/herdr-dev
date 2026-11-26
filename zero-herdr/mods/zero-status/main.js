@@ -3,7 +3,7 @@ import { h_flex } from "gpui-base";
 import { spaces, agents, panes, focused, layout, home, theme, run, window as appWindow, keys } from "herdr";
 
 import { UI, MONO } from "./zero-tokens.js";
-import { closePanelSmooth, openPanelSmooth } from "./zero-kit.js";
+import { closePanelSmooth, glassBg, glassOn, openPanelSmooth, setGlassMode, syncGlassLayout, withAlpha } from "./zero-kit.js";
 
 function findNode(node, id) {
   if (node?.id === id) return node;
@@ -41,7 +41,7 @@ function sep(t) {
   return div().w(1).h(10).flex_none().bg(t.border);
 }
 
-function pill(id, t, tip, onClick) {
+function pill(id, t, tip, onClick, glass = false) {
   return h_flex()
     .id(id)
     .h(20)
@@ -51,12 +51,16 @@ function pill(id, t, tip, onClick) {
     .flex_none()
     .items_center()
     .cursor_pointer()
-    .hover((s) => s.bg(t.hover).text_color(t.foreground))
+    .hover((s) => s.bg(glass ? glassBg(t.hover, "88", true) : t.hover).text_color(t.foreground))
     .tooltip(tip)
     .on_click(onClick);
 }
 
 export default class ZeroStatus extends View {
+  init() {
+    this._syncedGlassBg = null;
+  }
+
   toggleSidePanel(tabId, cx) {
     const root = layout();
     const panel = findNode(root, "panel");
@@ -71,6 +75,16 @@ export default class ZeroStatus extends View {
 
   render() {
     const t = theme();
+    const glass = glassOn();
+    if (glass) {
+      const syncKey = `${t.chrome ?? ""}:${t.surface ?? ""}`;
+      if (this._syncedGlassBg !== syncKey) {
+        this._syncedGlassBg = syncKey;
+        syncGlassLayout(t);
+      }
+    } else {
+      this._syncedGlassBg = null;
+    }
     const spaceList = spaces();
     const space = spaceList.find((s) => s.active) ?? spaceList[0];
     const foc = focused();
@@ -196,9 +210,9 @@ export default class ZeroStatus extends View {
       .px(10)
       .gap(6)
       .items_center()
-      .bg(t.chrome)
+      .bg(glass ? glassBg(t.chrome, "72", true) : t.chrome)
       .border_t(1)
-      .border_color(t.border)
+      .border_color(glass ? withAlpha(t.foreground, "18") : t.border)
       .font_family(UI)
       .text_size(11)
       .text_color(t.muted)
@@ -208,7 +222,8 @@ export default class ZeroStatus extends View {
           t,
           (space?.machine ? `Remote: ${space.machine}` : "This computer") +
             (pickerKey ? ` · Switch (${pickerKey})` : " · Switch space"),
-          () => run("mod.open", { name: "picker" })
+          () => run("mod.open", { name: "picker" }),
+          glass
         )
           .child(
             svg(`mods/zero-ui/icons/${space?.machine ? "server" : "monitor"}.svg`)
@@ -221,8 +236,12 @@ export default class ZeroStatus extends View {
         bar
           .child(sep(t))
           .child(
-            pill("zero-status-branch", t, "Toggle Git changes", (_e, cx) =>
-              this.toggleSidePanel("changes", cx)
+            pill(
+              "zero-status-branch",
+              t,
+              "Toggle Git changes",
+              (_e, cx) => this.toggleSidePanel("changes", cx),
+              glass
             )
               .child(svg("mods/zero-ui/icons/branch.svg").size(11.5).text_color(t.accent))
               .child(div().max_w(140).truncate().text_color(t.muted).child(branch))
@@ -232,14 +251,43 @@ export default class ZeroStatus extends View {
         bar
           .child(sep(t))
           .child(
-            pill("zero-status-cwd", t, `${rawCwd || cwd} · Toggle files`, (_e, cx) =>
-              this.toggleSidePanel("files", cx)
+            pill(
+              "zero-status-cwd",
+              t,
+              `${rawCwd || cwd} · Toggle files`,
+              (_e, cx) => this.toggleSidePanel("files", cx),
+              glass
             ).child(div().max_w(200).truncate().text_color(t.dim).child(cwd))
           )
       )
       .child(sep(t))
       .child(agentPill)
       .child(div().flex_1().min_w(8))
+      .child(
+        pill(
+          "zero-status-glass-toggle",
+          t,
+          glass ? "Frosted glass on · click for solid UI" : "Solid UI · click for frosted glass",
+          (_e, cx) => {
+            this._syncedGlassBg = null;
+            setGlassMode(!glass, t);
+            cx.notify();
+          },
+          glass
+        )
+          .child(
+            div()
+              .size(4)
+              .rounded_full()
+              .bg(glass ? t.accent : t.dim)
+          )
+          .child(
+            div()
+              .text_color(glass ? t.foreground : t.dim)
+              .child("Glass")
+          )
+      )
+      .child(sep(t))
       .when(Boolean(statusPanel), (bar) =>
         bar
           .child(
@@ -247,7 +295,8 @@ export default class ZeroStatus extends View {
               "zero-status-panel-toggle",
               t,
               statusOpen ? "Hide telemetry panel" : "Show telemetry panel",
-              (_e, cx) => (statusOpen ? closePanelSmooth("zero-herdr", cx) : openPanelSmooth("zero-herdr"))
+              (_e, cx) => (statusOpen ? closePanelSmooth("zero-herdr", cx) : openPanelSmooth("zero-herdr")),
+              glass
             )
               .child(
                 div()
@@ -264,16 +313,16 @@ export default class ZeroStatus extends View {
           .child(sep(t))
       )
       .child(
-        pill("zero-status-palette", t, "Command palette", () => run("app.palette"))
+        pill("zero-status-palette", t, "Command palette", () => run("app.palette"), glass)
           .when(Boolean(paletteKey), (el) =>
             el.child(
               div()
                 .px(4)
                 .h(15)
                 .rounded(4)
-                .bg(t.surface)
+                .bg(glass ? glassBg(t.surface, "88", true) : t.surface)
                 .border_1()
-                .border_color(t.border)
+                .border_color(glass ? withAlpha(t.border, "88") : t.border)
                 .flex()
                 .items_center()
                 .text_size(9.5)

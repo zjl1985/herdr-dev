@@ -15,10 +15,16 @@ function mix(a, b, amount) {
 function luma(c) {
   return c ? c[0] * .2126 + c[1] * .7152 + c[2] * .0722 : 0;
 }
-export function cardMaterial(p) {
-  const base = mix(p.inset ?? p.bg, p.bg, 1);
+function alpha(hex, aa) {
+  if (typeof hex !== 'string' || !hex.startsWith('#')) return hex;
+  return (hex.length >= 7 ? hex.slice(0, 7) : hex) + aa;
+}
+export function cardMaterial(p, { glass = false } = {}) {
+  const insetRgba = rgba(p.inset);
+  const solidInset = insetRgba && insetRgba[3] > 0.05 ? p.inset : null;
+  const base = mix(solidInset ?? p.bg, p.bg, 1);
   const surface = rgba(base);
-  const chrome = rgba(p.chrome ?? p.inset ?? p.bg);
+  const chrome = rgba(p.chrome ?? solidInset ?? p.bg);
   const dark = surface && luma(surface) < 128;
   // Preserve the sculpted lift & well depth when surface sits on chrome
   // (e.g. claude-dark), and only trim excess lift when a theme already
@@ -26,17 +32,32 @@ export function cardMaterial(p) {
   const chromeGap = surface && chrome ? Math.abs(luma(surface) - luma(chrome)) : 0;
   const highContrastSurface = chromeGap >= 6;
   const top = dark ? mix(base, p.text, highContrastSurface ? .028 : .055) : base;
-  const well = dark ? mix(top, p.inset, highContrastSurface ? .62 : .8) : mix(top, p.track, .3);
+  const darkWellTarget = solidInset ?? mix(top, '#000000', .45);
+  const well = dark ? mix(top, darkWellTarget, highContrastSurface ? .62 : .8) : mix(top, p.track, .3);
   const wellRgb = rgba(well);
   const idleRgb = rgba(p.idle);
   const idleText = wellRgb && idleRgb && Math.abs(luma(idleRgb) - luma(wellRgb)) < 85
     ? (p.muted ?? p.idle)
     : (p.idle ?? p.muted);
+  const edge = mix(top, p.line, dark ? .65 : .3);
+  const wellEdge = mix(well, p.line, .25);
+  if (glass) {
+    // Milky frosted sheen + luminous specular rim over balanced translucent root
+    // chrome (~55% effective dark / ~66% light) so cards read as crisp frosted glass.
+    const frostFace = dark ? mix(top, p.text, .12) : mix(top, '#ffffff', .35);
+    return {
+      top: alpha(frostFace, dark ? '4c' : '64'),
+      edge: dark ? alpha(p.text, '28') : alpha('#ffffff', '88'),
+      well: alpha(well, dark ? '58' : '44'),
+      wellEdge: dark ? alpha(p.text, '18') : alpha(p.line, '55'),
+      idleText,
+    };
+  }
   return {
     top,
-    edge: mix(top, p.line, dark ? .65 : .3),
+    edge,
     well,
-    wellEdge: mix(well, p.line, .25),
+    wellEdge,
     idleText,
   };
 }

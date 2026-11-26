@@ -1,6 +1,7 @@
 import { View, div, svg, image } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
 import { T, UI, MONO as ZERO_MONO } from "./zero-tokens.js";
+import { glassBg, glassOn } from "./zero-kit.js";
 import {
   spaces,
   agents,
@@ -477,6 +478,7 @@ export default class ClaudeDrawer extends View {
     const on = ghost === "close" || (this.shown && !(this.leaving && !pinned));
 
     const t = theme();
+    const glass = glassOn();
     const place = placement();
     const onRight = place?.edge === "right";
     const spaceList = spaces();
@@ -532,6 +534,7 @@ export default class ClaudeDrawer extends View {
       // the floating drawer keeps the 268px design width.
       .when(pinned, (r) => r.w_full().h_full().flex_none().overflow_y_scrollbar())
       .when(!pinned, (r) => r.w(SIDEBAR_W))
+      .when(!pinned && !ghost && glass, (r) => r.bg(t.popover ?? t.surface).rounded(10))
       .relative()
       .pt(topPad)
       .pb(5)
@@ -993,7 +996,7 @@ export default class ClaudeDrawer extends View {
             .flex_none()
             .w(width)
             .overflow_hidden()
-            .bg(t.chrome)
+            .bg(glassOn() ? glassBg(t.chrome, "8c", true) : t.chrome)
             .border_r(1)
             .border_color(t.border)
             .transition(

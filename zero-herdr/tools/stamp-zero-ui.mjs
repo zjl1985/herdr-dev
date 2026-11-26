@@ -27,6 +27,7 @@ const CONSUMERS = [
   "zero-herdr",
   "zero-herdr-toggle",
   "zero-status",
+  "zero-tabs",
   "claude-drawer",
   "claude-pane",
   "files",

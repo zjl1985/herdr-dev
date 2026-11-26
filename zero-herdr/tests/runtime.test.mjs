@@ -26,7 +26,7 @@ function panel() {
     layout: () => ({ id: 'zero-herdr', hidden: false }), appHome: () => '/tmp', home: () => '/home',
     invalidateSwitch: () => {}, noteCodexData: () => { confirmations++; return true; }, switchState: () => null, closeOverlay: () => {},
     shared: () => null, setShared: () => {}, PICKER_KEY: 'picker', SWITCH_KEY: 'switch',
-    palette: () => ({}), programIcon: () => null, motionOn: () => false, withAlpha: (c) => c, statusInfo: () => ({ key: 'idle', label: 'Idle' }),
+    palette: () => ({}), programIcon: () => null, motionOn: () => false, glassOn: () => false, withAlpha: (c) => c, statusInfo: () => ({ key: 'idle', label: 'Idle' }),
     closePanelSmooth: () => {}, openPanelSmooth: () => {}, panelClosing: () => false, panelMotion: (node) => node, trackPanelReveal: () => true,
     T: { type: {}, space: {}, radius: {}, hit: {}, icon: {}, duration: {} }, UI: '', MONO: '',
     exec: async () => { calls++; return { stdout: JSON.stringify({ model: 'test', effort: 'high', title: current.address }) }; },
@@ -169,7 +169,7 @@ test('draft refuses keys; fresh confirmation changes awaiting to success; duplic
 test('file list renders read failures and loading status', () => {
   const labels = [];
   const el = new Proxy({}, { get: (_, key) => key === 'when' ? (b, yes, no) => { if (b) yes(el); else if (no) no(el); return el; } : key === 'child' ? (...v) => { labels.push(...v); return el; } : () => el });
-  const ctx = load('mods/files/main.js', { View: class {}, div: () => el, svg: () => el, h_flex: () => el, v_flex: () => el, theme: () => ({}), T: { hit: {} }, UI: '', spaces: () => [{active: true, id:'s', folder:'/repo'}], panes: () => [], focused: () => ({}), layout: () => null, closePanelSmooth: () => {}, panelClosing: () => false, panelMotion: (node) => node, trackPanelReveal: () => true }, 'globalThis.Files = Files; globalThis.keyForTest = key;');
+  const ctx = load('mods/files/main.js', { View: class {}, div: () => el, svg: () => el, h_flex: () => el, v_flex: () => el, theme: () => ({}), T: { hit: {} }, UI: '', spaces: () => [{active: true, id:'s', folder:'/repo'}], panes: () => [], focused: () => ({}), layout: () => null, closePanelSmooth: () => {}, glassBg: (c) => c, glassOn: () => false, withAlpha: (c) => c, panelClosing: () => false, panelMotion: (node) => node, trackPanelReveal: () => true }, 'globalThis.Files = Files; globalThis.keyForTest = key;');
   const view = Object.assign(new ctx.Files(), { entries: new Map(), marks: {}, folders: new Set(), context: { key: ctx.keyForTest() }, root: '/repo', error: 'Permission denied' });
   view.render({}); assert.ok(labels.includes('Permission denied'));
   labels.length = 0; view.error = null; view.loading = true; view.render({}); assert.ok(labels.includes('Loading files…'));

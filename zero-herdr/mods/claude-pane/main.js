@@ -3,7 +3,7 @@
 import { View, div, svg, image } from "gpui-kit";
 import { h_flex } from "gpui-base";
 import { T, UI, MONO } from "./zero-tokens.js";
-import { motionOn } from "./zero-kit.js";
+import { glassBg, glassOn, motionOn, programIcon } from "./zero-kit.js";
 import { panes, props, run, theme, home } from "herdr";
 
 function icon(p, size, color) {
@@ -43,6 +43,7 @@ function button(t, id, name, tip, command, args, danger = false) {
 export default class ClaudePane extends View {
   render() {
     const t = theme();
+    const glass = glassOn();
     const all = panes();
     const p = all.find((x) => x.pane === props()?.pane);
     if (!p) return div();
@@ -50,7 +51,7 @@ export default class ClaudePane extends View {
     const siblings = all.filter((x) => x.tab === p.tab).length;
     const name =
       ((p.program?.agent || p.program?.shell) && p.program.name) || p.title || p.program?.name || "shell";
-    const pic = icon(p.program, 14, t.dim);
+    const pic = programIcon(p.program, 14, t.dim);
     const st = p.status;
 
     return h_flex()
@@ -60,7 +61,8 @@ export default class ClaudePane extends View {
       .pr(6)
       .gap(8)
       .items_center()
-      .bg(t.surface)
+      .bg(glass ? glassBg(t.foreground, "0a", true) : t.surface)
+      .when(glass, (el) => el.border_b(0.5).border_color(glassBg(t.foreground, "16", true)))
       .rounded_t(T.radius.outer)
       .font_family(UI)
       .text_size(12)

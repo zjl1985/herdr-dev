@@ -20,7 +20,7 @@ BACKUP=''
 INCOMING=''
 PUBLISHING=0
 TOUCHED=()
-MOD_WHITELIST=(claude-drawer claude-pane zero-herdr zero-herdr-toggle zero-status files files-menu zero-ui zero-picker zero-changes)
+MOD_WHITELIST=(claude-drawer claude-pane zero-herdr zero-herdr-toggle zero-status zero-tabs files files-menu zero-ui zero-picker zero-changes)
 FILES=(layouts/zero-herdr.json layouts/claude.svg)
 for mod in "${MOD_WHITELIST[@]}"; do FILES+=("mods/$mod"); done
 # Themes are shared user assets. Seed defaults only on first installation.

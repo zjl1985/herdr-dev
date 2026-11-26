@@ -2,7 +2,7 @@ import { View, div, svg } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input, Scrollbar, v_virtual_list } from "gpui-base";
 import { spaces, panes, focused, exec, readTextFile, watchFolder, theme, settings, window, layout } from "herdr";
 import { UI } from "./zero-tokens.js";
-import { closePanelSmooth, panelClosing, panelMotion, trackPanelReveal } from "./zero-kit.js";
+import { closePanelSmooth, glassBg, glassOn, panelClosing, panelMotion, trackPanelReveal, withAlpha } from "./zero-kit.js";
 
 function findNode(node, id) {
   if (node?.id === id) return node;
@@ -315,7 +315,8 @@ export default class Changes extends View {
     const visibleNow = Boolean(!panel || (!panel.hidden && (!body || body.active === "changes")));
     const settled = trackPanelReveal(this, "panel", visibleNow, cx, "changes");
     const closing = panelClosing("panel");
-    return panelMotion(v_flex().id("changes").size_full().min_h(0).rounded(10).overflow_hidden().bg(t.background).border_1().border_color(t.border).text_color(t.foreground).font_family(UI).text_size(13).track_focus(this.handle)
+    const glass = glassOn();
+    return panelMotion(v_flex().id("changes").size_full().min_h(0).rounded(10).overflow_hidden().bg(glass ? glassBg(t.surface, "64", true) : t.background).border_1().border_color(glass ? withAlpha(t.foreground, "26") : t.border).text_color(t.foreground).font_family(UI).text_size(13).track_focus(this.handle)
       .on_key_down((e, cx) => {
         if (e.key === "escape" && this.typing) { this.typing = false; this.handle.focus(); cx.stop_propagation(); cx.notify(); }
       })
