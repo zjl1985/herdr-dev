@@ -645,24 +645,30 @@ export default class ZeroHerdr extends View {
         .when(isCodex, el => el.child(icon('chevron-down', 10, p.muted)));
     };
 
+    const motionEnabled = motionOn();
     const session = card('session-card')
       .child(h_flex().w_full().items_center().gap(7)
         .child(programIcon(lead?.program, 16, p.muted) ?? dot(stateColor, 6))
         .child(txt(m.programName, 12).font_weight(500).flex_1().min_w(0).truncate())
-        .child(action('status-motion', 'motion', motionOn() ? 'Reduce motion' : 'Enable motion', (_e, cx) => {
-          localStorage.setItem('zero.reducedMotion', motionOn() ? '1' : '0'); cx.notify();
-        }))
+        .child(div().id('status-motion').relative().size(24).flex_none().flex().items_center().justify_center()
+          .rounded(7).cursor_pointer().hover(s => s.bg(p.hover))
+          .when(!motionEnabled, el => el.bg(p.selected).border(.5).border_color(withAlpha(p.blocked, '66')))
+          .tooltip(motionEnabled ? 'Motion on · Click to pause animations' : 'Motion paused · Click to resume animations')
+          .on_click((_e, cx) => {
+            localStorage.setItem('zero.reducedMotion', motionOn() ? '1' : '0'); cx.notify();
+          })
+          .child(icon('motion', 14, motionEnabled ? p.muted : p.dim))
+          .when(!motionEnabled, el => el.child(div().absolute().top(3).right(3).size(4.5).rounded_full().bg(p.blocked))))
         .child(action('status-close', 'panel-right', 'Hide status panel', () => run('layout.hide', { id: 'zero-herdr' }))))
       .child(h_flex().id('session-signal-banner').w_full().h(34).px(10).rounded(9).border(.5)
         .border_color(working || lead?.status === 'blocked' ? withAlpha(stateColor, '44') : material.wellEdge)
         .bg(material.well).items_center().gap(7)
-        .when(working || lead?.status === 'blocked', el => el.child(div().w(2).h(14).flex_none().rounded_full().bg(stateColor)))
-        .child(dot(stateColor, 5, working)).child(txt(lead ? info.label : 'No agent', 11, stateColor).font_weight(500))
+        .child(txt(lead ? info.label : 'No agent', 11, stateColor).font_weight(500))
         .when(Boolean(elapsed), el => el.child(mono(elapsed, 10)))
         .child(div().flex_1())
         .child(h_flex().h(16).items_end().gap(2).flex_none().tooltip('Session activity')
           .children([7, 12, 16, 10, 14, 8, 11].map((height, i) => div().id('signal-bar-' + i).w(2).h(working ? height : 3).rounded_full().bg(stateColor)
-            .when(working && motionOn(), el => el.loop('height', { from: 3 + i % 3, to: height, period: 880 + i * 137 }))))))
+            .when(working && motionEnabled, el => el.loop('height', { from: 3 + i % 3, to: height, period: 880 + i * 137 }))))))
       .child(txt(m.title, 16).font_weight(500).line_height(1.3).max_h(42).overflow_hidden().tooltip(String(m.title)))
       .child(h_flex().w_full().items_center().gap(4)
         .child(h_flex().id('session-cwd-copy').min_w(0).flex_1().h(24).px(5).gap(6).rounded(6).items_center()
