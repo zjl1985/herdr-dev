@@ -84,6 +84,8 @@ export default class ZeroHerdr extends View {
     this.pickerOverlay = null;
     this.pickSeq = null;
     this.switchWatchdog = null;
+    this.copied = null;
+    this.copyTimer = null;
     // C09: Kimi quota cache keeps its account identity and read time.
     this.limits = null;
     try {
@@ -151,6 +153,35 @@ export default class ZeroHerdr extends View {
     const find = (node) => node?.id === "zero-herdr" ? node : (node?.children ?? []).map(find).find(Boolean);
     const panel = find(layout());
     return Boolean(panel && !panel.hidden);
+  }
+
+  copyValue(key, value, cx) {
+    if (!value || !cx?.write_to_clipboard) return;
+    cx.write_to_clipboard(String(value));
+    this.copied = key;
+    if (this.copyTimer) try { this.copyTimer.cancel(); } catch {}
+    this.copyTimer = cx.timer?.after?.(1500, () => {
+      if (this.copied === key) {
+        this.copied = null;
+        cx.notify();
+      }
+    }) ?? null;
+    if (this.copyTimer) this.tasks.push(this.copyTimer);
+    cx.notify();
+  }
+
+  toggleSidePanel(tabId) {
+    const find = (node, id) => node?.id === id ? node : (node?.children ?? []).map((c) => find(c, id)).find(Boolean);
+    const root = layout();
+    const panel = find(root, "panel");
+    const body = find(root, "panel-body");
+    const isOpen = panel && !panel.hidden && body?.active === tabId;
+    if (isOpen) {
+      run("layout.hide", { id: "panel" });
+    } else {
+      run("layout.select", { stack: "panel-body", child: tabId });
+      run("layout.show", { id: "panel" });
+    }
   }
 
   async close(_cx) {
@@ -610,8 +641,10 @@ export default class ZeroHerdr extends View {
           localStorage.setItem('zero.reducedMotion', motionOn() ? '1' : '0'); cx.notify();
         }))
         .child(action('status-close', 'panel-right', 'Hide status panel', () => run('layout.hide', { id: 'zero-herdr' }))))
-      .child(h_flex().id('session-signal-banner').w_full().h(34).px(10).rounded(9).border(.5).border_color(material.wellEdge)
+      .child(h_flex().id('session-signal-banner').w_full().h(34).px(10).rounded(9).border(.5)
+        .border_color(working || lead?.status === 'blocked' ? withAlpha(stateColor, '44') : material.wellEdge)
         .bg(material.well).items_center().gap(7)
+        .when(working || lead?.status === 'blocked', el => el.child(div().w(2).h(14).flex_none().rounded_full().bg(stateColor)))
         .child(dot(stateColor, 5, working)).child(txt(lead ? info.label : 'No agent', 11, stateColor).font_weight(500))
         .when(Boolean(elapsed), el => el.child(mono(elapsed, 10)))
         .child(div().flex_1())
@@ -619,8 +652,15 @@ export default class ZeroHerdr extends View {
           .children([7, 12, 16, 10, 14, 8, 11].map((height, i) => div().id('signal-bar-' + i).w(2).h(working ? height : 3).rounded_full().bg(stateColor)
             .when(working && motionOn(), el => el.loop('height', { from: 3 + i % 3, to: height, period: 880 + i * 137 }))))))
       .child(txt(m.title, 16).font_weight(500).line_height(1.3).max_h(42).overflow_hidden().tooltip(String(m.title)))
-      .child(h_flex().w_full().items_center().gap(6).child(icon('folder', 12))
-        .child(mono(folder(m.cwd, home()) || 'No folder', 10.5).min_w(0).flex_1().truncate().tooltip(m.cwd ?? '')))
+      .child(h_flex().w_full().items_center().gap(4)
+        .child(h_flex().id('session-cwd-copy').min_w(0).flex_1().h(24).px(5).gap(6).rounded(6).items_center()
+          .when(Boolean(m.cwd), el => el.cursor_pointer().hover(s => s.bg(p.hover))
+            .tooltip((m.cwd ?? '') + '\nClick to copy path')
+            .on_click((_e, cx) => this.copyValue('cwd', m.cwd, cx)))
+          .child(icon('folder', 12, this.copied === 'cwd' ? p.done : p.muted))
+          .child(mono(this.copied === 'cwd' ? 'Copied path' : (folder(m.cwd, home()) || 'No folder'), 10.5, this.copied === 'cwd' ? p.done : p.muted)
+            .min_w(0).flex_1().truncate()))
+        .when(Boolean(m.cwd), el => el.child(action('session-open-files', 'sidebar', 'Toggle files panel', () => this.toggleSidePanel('files')))))
       .when(Boolean(model || effortInfo), el => el.child(h_flex().w_full().gap(6)
         .when(Boolean(model), row => row.child(modelChip(model, 'Select model')))
         .when(Boolean(effortInfo), row => row.child(effortChip(effortInfo)))))
@@ -746,26 +786,54 @@ export default class ZeroHerdr extends View {
 
     const git = m.git.state === 'ready' ? m.git.data : null;
     const branch = git?.branch ?? pane?.branch;
+    const syncPill = (id, label, color) => h_flex().id(id).h(21).px(7).rounded(6).items_center()
+      .bg(material.well).border(.5).border_color(material.wellEdge)
+      .child(mono(label, 10, color).line_height(1));
     const workspace = card('workspace-card')
-      .child(heading('Workspace', icon('branch', 16, p.accent)))
+      .child(heading('Workspace', icon('branch', 15, p.accent)))
       .child(h_flex().w_full().gap(10).items_center()
-        .child(v_flex().flex_1().min_w(0).gap(5)
-          .child(mono(branch ?? (m.git.state === 'empty' ? 'No repository' : '—'), 13, p.text).truncate().tooltip(branch ?? ''))
+        .child(v_flex().flex_1().min_w(0).gap(4)
+          .child(h_flex().id('workspace-branch-copy').min_w(0).px(4).py(2).ml(-4).rounded(6).items_center().gap(5)
+            .when(Boolean(branch), el => el.cursor_pointer().hover(s => s.bg(p.hover))
+              .tooltip(branch + '\nClick to copy branch')
+              .on_click((_e, cx) => this.copyValue('branch', branch, cx)))
+            .child(mono(this.copied === 'branch' ? 'Copied branch' : (branch ?? (m.git.state === 'empty' ? 'No repository' : '—')),
+              12.5, this.copied === 'branch' ? p.done : p.text).font_weight(500).min_w(0).truncate()))
           .child(txt(space?.machine ?? 'Local workspace', 10.5, p.muted).truncate()))
-        .when(Boolean(git), el => el.child(v_flex().flex_none().items_end().gap(1)
-          .child(txt(git.changed, 26, git.changed ? p.text : p.muted).font_weight(500))
-          .child(txt(git.changed ? 'changed files' : 'clean', 10.5, p.muted)))))
-      .when(Boolean(git?.ahead || git?.behind), el => el.child(mono('↑ ' + git.ahead + ' ahead   ↓ ' + git.behind + ' behind', 10.5)))
+        .when(Boolean(git), el => el.child(v_flex().id('workspace-open-changes').flex_none().items_end().gap(1)
+          .px(8).py(4).mr(-4).rounded(8).cursor_pointer().hover(s => s.bg(p.hover))
+          .tooltip('Toggle Git changes panel')
+          .on_click(() => this.toggleSidePanel('changes'))
+          .child(txt(git.changed, 24, git.changed ? p.text : p.muted).font_weight(500).line_height(1))
+          .child(txt(git.changed ? 'changed' : 'clean', 10, git.changed ? p.accent : p.muted)))))
+      .when(Boolean(git?.ahead || git?.behind), el => el.child(h_flex().w_full().gap(6).items_center()
+        .when(Boolean(git.ahead), row => row.child(syncPill('git-ahead', '↑ ' + git.ahead + ' ahead', p.accent)))
+        .when(Boolean(git.behind), row => row.child(syncPill('git-behind', '↓ ' + git.behind + ' behind', p.muted)))))
       .when(m.git.state === 'error', el => el.child(txt(m.git.message, 10.5, p.blocked)));
+    const tabsById = new Map((space?.tabs ?? []).map((t) => [t.id, t]));
     const agentCard = card('agents-card').child(heading('Agents', mono(list.length, 10.5)))
-      .child(v_flex().w_full().gap(4).max_h(150).overflow_y_scrollbar().children(list.map(agent => {
+      .child(v_flex().w_full().gap(4).max_h(168).overflow_y_scrollbar().children(list.map(agent => {
         const st = statusInfo(agent.status);
-        return h_flex().id('status-agent-' + agent.address).w_full().min_h(30).px(8).gap(7).rounded(8).items_center()
-          .when(agent.focused, el => el.bg(p.selected)).cursor_pointer().hover(s => s.bg(p.hover))
+        const stColor = p[st.key];
+        const isBlocked = agent.status === 'blocked';
+        const isWorking = agent.status === 'working';
+        const progName = agent.program?.name ?? 'Agent';
+        const sub = taskTitle(agent, tabsById.get(agent.tab), space);
+        const showSub = Boolean(sub) && sub.toLowerCase() !== progName.toLowerCase() && sub.toLowerCase() !== (space?.name ?? '').toLowerCase();
+        return h_flex().id('status-agent-' + agent.address).w_full().min_h(showSub ? 38 : 30).px(8).py(4).gap(7).rounded(8).items_center()
+          .when(agent.focused, el => el.bg(p.selected))
+          .when(!agent.focused && isBlocked, el => el.bg(withAlpha(p.blocked, '14')).border(.5).border_color(withAlpha(p.blocked, '44')))
+          .cursor_pointer().hover(s => s.bg(agent.focused ? p.selected : p.hover))
           .on_click(() => run('pane.focus', { pane: agent.pane }))
-          .child(dot(p[st.key], 5, agent.status === 'working'))
-          .child(txt(agent.program?.name ?? 'Agent', 11.5).flex_1().min_w(0).truncate())
-          .child(txt(st.label, 10.5, p.muted));
+          .child(div().w(2).h(showSub ? 18 : 14).flex_none().rounded_full()
+            .when(agent.focused || isBlocked, el => el.bg(agent.focused ? p.accent : p.blocked)))
+          .child(programIcon(agent.program, 13, agent.focused ? p.text : p.muted) ?? dot(stColor, 5, isWorking))
+          .child(v_flex().flex_1().min_w(0).gap(1)
+            .child(txt(progName, 11.5, agent.focused ? p.text : p.muted).font_weight(agent.focused ? 500 : 400).line_height(1.1).truncate())
+            .when(showSub, col => col.child(txt(sub, 10, p.dim).line_height(1.1).truncate())))
+          .child(h_flex().flex_none().items_center().gap(4)
+            .child(dot(stColor, 4.5, isWorking))
+            .child(txt(st.label, 10, isBlocked || isWorking || agent.status === 'done' ? stColor : p.muted)));
       })));
     return v_flex().id('zero-herdr-root').size_full().font_family(UI)
       // The layout owns the outer spacing. Keep card edges on its grid;
