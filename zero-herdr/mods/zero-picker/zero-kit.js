@@ -8,7 +8,8 @@ import { T, UI, MONO } from "./zero-tokens.js";
 import { palette } from "./zero-theme.js";
 
 export const PANEL_CLOSE_KEY = "zero.panel.closing";
-export const PANEL_CLOSE_MS = 175;
+export const PANEL_OPEN_KEY = "zero.panel.openSeq";
+export const PANEL_CLOSE_MS = 230;
 
 /** True while a docked panel is playing its damped close glide before layout.hide. */
 export function panelClosing(panelId) {
@@ -35,7 +36,7 @@ export function closePanelSmooth(panelId, cx) {
   });
 }
 
-/** Show a layout panel (and optional stack tab), clearing any in-flight close state. */
+/** Show a layout panel (and optional stack tab), bumping openSeq so spring entry always plays. */
 export function openPanelSmooth(panelId, stackTab = null) {
   const cur = shared(PANEL_CLOSE_KEY) ?? {};
   if (cur[panelId]) {
@@ -43,15 +44,21 @@ export function openPanelSmooth(panelId, stackTab = null) {
     delete next[panelId];
     setShared(PANEL_CLOSE_KEY, next);
   }
+  const seqs = shared(PANEL_OPEN_KEY) ?? {};
+  setShared(PANEL_OPEN_KEY, { ...seqs, [panelId]: Date.now(), ...(stackTab ? { [stackTab]: Date.now() } : {}) });
   if (stackTab) run("layout.select", { stack: "panel-body", child: stackTab });
   run("layout.show", { id: panelId });
 }
 
-/** Track panel visibility transitions (mount or unhide) so spring entry triggers cleanly. */
-export function trackPanelReveal(view, visibleNow, cx) {
+/** Track panel mount / reopen / tab-switch so spring entry reliably triggers even when hidden views stop rendering. */
+export function trackPanelReveal(view, panelId, visibleNow, cx, tabKey = null) {
+  const now = Date.now();
+  const closing = panelClosing(panelId);
   if (!motionOn() || !cx?.timer?.after) {
     view._panelSettled = true;
     view._panelWasHidden = !visibleNow;
+    view._panelWasClosing = closing;
+    view._panelLastRender = now;
     return true;
   }
   if (!visibleNow) {
@@ -59,11 +66,22 @@ export function trackPanelReveal(view, visibleNow, cx) {
     view._panelSettled = false;
     return false;
   }
-  if (view._panelSettled === undefined || view._panelWasHidden) {
+  const seqs = shared(PANEL_OPEN_KEY) ?? {};
+  const seq = `${seqs[panelId] ?? 0}:${tabKey ? (seqs[tabKey] ?? 0) : 0}`;
+  const seqChanged = view._panelOpenSeq !== undefined && seq !== view._panelOpenSeq;
+  const reopenedFromClose = Boolean(view._panelWasClosing && !closing);
+  const firstMount = view._panelSettled === undefined;
+  const unhidden = Boolean(view._panelWasHidden);
+
+  view._panelOpenSeq = seq;
+  view._panelWasClosing = closing;
+  view._panelLastRender = now;
+
+  if (!closing && (firstMount || unhidden || seqChanged || reopenedFromClose)) {
     view._panelWasHidden = false;
     view._panelSettled = false;
     if (view._panelRevealTimer) try { view._panelRevealTimer.cancel(); } catch {}
-    view._panelRevealTimer = cx.timer.after(16, (cx) => {
+    view._panelRevealTimer = cx.timer.after(20, (cx) => {
       view._panelSettled = true;
       cx.notify();
     });
@@ -71,16 +89,17 @@ export function trackPanelReveal(view, visibleNow, cx) {
   return Boolean(view._panelSettled);
 }
 
-/** Attach GPUI spring slide + opacity damping to a docked panel's root element. */
-export function panelMotion(el, { settled = true, closing = false, distance = 22 } = {}) {
+/** Wrap a docked panel in a clipped frame and apply damped GPUI spring slide + fade. */
+export function panelMotion(el, { settled = true, closing = false, distance = 56 } = {}) {
   if (!motionOn()) return el;
   const shown = settled && !closing;
-  return el
+  const animated = el
     .relative()
-    .left(shown ? 0 : closing ? distance + 4 : distance)
+    .left(shown ? 0 : closing ? distance : distance)
     .opacity(shown ? 1 : 0)
-    .spring("left", closing ? { response: 210, damping: 0.96 } : { response: 270, damping: 0.84 })
-    .transition("opacity", { duration: closing ? 150 : 185, easing: closing ? "ease-in" : "ease-out" });
+    .spring("left", closing ? { response: 250, damping: 0.92 } : { response: 360, damping: 0.72 })
+    .transition("opacity", { duration: closing ? 190 : 220, easing: closing ? "ease-in" : "ease-out" });
+  return div().size_full().min_h(0).overflow_hidden().child(animated);
 }
 
 /** H04: local reduced-motion switch (no system-preference API exists in the

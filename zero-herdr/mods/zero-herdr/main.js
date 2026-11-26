@@ -852,7 +852,7 @@ export default class ZeroHerdr extends View {
             .child(dot(stColor, 4.5, isWorking))
             .child(txt(st.label, 10, isBlocked || isWorking || agent.status === 'done' ? stColor : p.muted)));
       })));
-    const settled = trackPanelReveal(this, this.visible(), cx);
+    const settled = trackPanelReveal(this, 'zero-herdr', this.visible(), cx);
     const closing = panelClosing('zero-herdr');
     return panelMotion(v_flex().id('zero-herdr-root').size_full().font_family(UI)
       // The layout owns the outer spacing. Keep card edges on its grid;

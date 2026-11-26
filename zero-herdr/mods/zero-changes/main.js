@@ -313,7 +313,7 @@ export default class Changes extends View {
     const panel = findNode(rootTree, "panel");
     const body = findNode(rootTree, "panel-body");
     const visibleNow = Boolean(!panel || (!panel.hidden && (!body || body.active === "changes")));
-    const settled = trackPanelReveal(this, visibleNow, cx);
+    const settled = trackPanelReveal(this, "panel", visibleNow, cx, "changes");
     const closing = panelClosing("panel");
     return panelMotion(v_flex().id("changes").size_full().min_h(0).rounded(10).overflow_hidden().bg(t.background).border_1().border_color(t.border).text_color(t.foreground).font_family(UI).text_size(13).track_focus(this.handle)
       .on_key_down((e, cx) => {

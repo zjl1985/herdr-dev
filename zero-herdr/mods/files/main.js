@@ -188,7 +188,7 @@ export default class Files extends View {
     const panel = findNode(rootTree, "panel");
     const body = findNode(rootTree, "panel-body");
     const visibleNow = Boolean(!panel || (!panel.hidden && (!body || body.active === "files")));
-    const settled = trackPanelReveal(this, visibleNow, cx);
+    const settled = trackPanelReveal(this, "panel", visibleNow, cx, "files");
     const closing = panelClosing("panel");
     return panelMotion(v_flex().id("files").size_full().min_h(0).rounded(10).overflow_hidden().bg(t.background).border_1().border_color(t.border).text_color(t.foreground).font_family(UI).text_size(12)
       .child(h_flex().h(42).flex_none().px(14).gap(8).items_center().bg(t.surface)
