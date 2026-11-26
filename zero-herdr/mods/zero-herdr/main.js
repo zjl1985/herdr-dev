@@ -530,16 +530,40 @@ export default class ZeroHerdr extends View {
       const filled = n == null ? 0 : Math.max(n > 0 ? 1 : 0, Math.round(n * count / 100));
       return h_flex().w_full().items_center().justify_between().children(Array.from({ length: count }, (_, i) => dot(i < filled ? color : p.track, 5)));
     };
-    const contextRuler = (value, color) => {
-      const n = percent(value);
-      return div().id('context-ruler').w_full().h(26).px(8).rounded(6)
-        .bg(material.well).border(.5).border_color(material.wellEdge)
-        .child(div().relative().w_full().h_full()
-          .children(Array.from({ length: 21 }, (_, i) => div().absolute().left(i * 5 + '%')
-            .ml(i === 20 ? -1 : 0).bottom(8).w(1).h(i % 5 === 0 ? 10 : i % 2 === 0 ? 7 : 4)
-            .rounded_full().bg(i % 5 === 0 ? p.dim : p.track)))
-          .child(div().id('context-needle').absolute().left(n + '%')
-            .ml(n === 100 ? -1.5 : n === 0 ? 0 : -.75).top(4).w(1.5).h(18).rounded_full().bg(color)));
+    const contextRuler = (value, color, nearCapacity = false) => {
+      const n = percent(value) ?? 0;
+      const fillW = n > 0 ? Math.max(3, Math.min(99, n)) : 0;
+      return div().id('context-ruler').relative().w_full().h(28).rounded(7).overflow_hidden()
+        .bg(material.well).border(.5).border_color(nearCapacity ? withAlpha(color, '66') : material.wellEdge)
+        // Subtle 80%-100% capacity zone
+        .child(div().absolute().top(1).bottom(1).right(1).w('20%').rounded(6)
+          .bg(withAlpha(p.blocked, nearCapacity ? '18' : '0a')))
+        // Inset rounded liquid wash matching inner radius (no corner bleed)
+        .when(fillW > 0, el => el.child(div().absolute().top(1).bottom(1).left(1).w(fillW + '%').rounded(6)
+          .bg(withAlpha(color, nearCapacity ? '2c' : '1a'))))
+        // Ticks + precision needle with micro cap
+        .child(div().relative().w_full().h_full().px(8)
+          .child(div().relative().w_full().h_full()
+            .children(Array.from({ length: 21 }, (_, i) => {
+              const tickPct = i * 5;
+              const major = i % 5 === 0;
+              const passed = tickPct <= n;
+              const dangerTick = tickPct >= 80;
+              const tickBg = passed
+                ? withAlpha(color, major ? 'aa' : '4c')
+                : dangerTick
+                  ? withAlpha(p.blocked, major ? '55' : '2c')
+                  : major ? p.dim : p.track;
+              return div().absolute().left(tickPct + '%')
+                .ml(i === 20 ? -1 : 0).bottom(7).w(1).h(major ? 10 : i % 2 === 0 ? 7 : 4)
+                .rounded_full().bg(tickBg);
+            }))
+            .child(div().id('context-needle').absolute().left(n + '%')
+              .ml(n === 100 ? -2 : n === 0 ? 0 : -2).top(3).w(4).h(20)
+              .flex().flex_col().items_center()
+              .when(nearCapacity && motionOn(), el => el.loop('opacity', { from: 0.5, to: 1, period: 1400 }))
+              .child(div().size(4).flex_none().rounded_full().bg(color))
+              .child(div().w(1.5).flex_1().rounded_full().bg(color)))));
     };
     const valueText = (value, size = 23, color = p.text) => h_flex().flex_none().items_baseline().gap(3)
       .child(txt(percent(value) == null ? '—' : Math.round(percent(value)), size, color).font_weight(500))
@@ -625,10 +649,11 @@ export default class ZeroHerdr extends View {
           .child(txt('Context', 12).font_weight(500).line_height(1).flex_1())
           .child(h_flex().flex_none().items_center().gap(5)
             .child(txt('used', 10.5, p.muted).line_height(1))
-            .child(h_flex().h(24).px(8).items_center().rounded(6).bg(material.well)
-              .border(.5).border_color(material.wellEdge).shadow_xs()
+            .child(h_flex().h(24).px(8).items_center().rounded(6)
+              .bg(contextNearCapacity ? withAlpha(contextColor, '18') : material.well)
+              .border(.5).border_color(contextNearCapacity ? withAlpha(contextColor, '66') : material.wellEdge).shadow_xs()
               .child(txt(Math.round(contextPercent) + '%', 16, contextNearCapacity ? p.blocked : p.text).font_weight(500).line_height(1).font_family(MONO)))))
-        .child(contextRuler(contextPercent, contextColor))
+        .child(contextRuler(contextPercent, contextColor, contextNearCapacity))
         .when(contextNearCapacity, row => row.child(txt('Near capacity', 10.5, p.blocked)))))
       .when(hasContext && hasQuota, el => el.child(div().w_full().h(.5).bg(p.line)))
       .when(hasQuota, el => el.child(heading('Available quota')));
