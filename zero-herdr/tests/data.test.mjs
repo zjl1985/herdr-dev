@@ -95,11 +95,20 @@ test("normalizeModelName strips duplicate effort suffix and effortProfile maps t
   assert.equal(normalizeModelName(null, "high"), null);
 
   assert.equal(effortProfile("low").bars, 1);
+  assert.equal(effortProfile("low").colorKey, "done");
   assert.equal(effortProfile("medium").bars, 2);
+  assert.equal(effortProfile("medium").colorKey, "teal");
   assert.equal(effortProfile("high").bars, 3);
   assert.equal(effortProfile("high").short, "High");
+  assert.equal(effortProfile("high").colorKey, "amber");
   assert.equal(effortProfile("xhigh").bars, 4);
-  assert.equal(effortProfile("xhigh").short, "Max");
+  assert.equal(effortProfile("xhigh").short, "X-High");
+  assert.equal(effortProfile("xhigh").colorKey, "accent");
+  assert.equal(effortProfile("max").bars, 5);
+  assert.equal(effortProfile("max").colorKey, "blocked");
+  assert.equal(effortProfile("ultra").bars, 5);
+  assert.equal(effortProfile("ultra").short, "Ultra");
+  assert.equal(effortProfile("ultra").colorKey, "plum");
   assert.equal(effortProfile("none").bars, 0);
   assert.equal(effortProfile(null), null);
 });

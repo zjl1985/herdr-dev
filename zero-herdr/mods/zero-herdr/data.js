@@ -145,19 +145,21 @@ export function normalizeModelName(rawModel, effort = null) {
   return name || null;
 }
 
-/** Semantic profile (bars 0..4, label, hint, tier) for a reasoning effort level. */
+/** Semantic profile (bars 0..5, label, short, hint, tier, colorKey) for a reasoning effort level. */
 export function effortProfile(effort) {
   if (effort == null || effort === "") return null;
   const raw = String(effort).trim();
   const key = raw.toLowerCase().replace(/[\s_-]+/g, "");
-  if (key === "none" || key === "off") return { level: 0, bars: 0, label: "Off", short: "Off", hint: "No extended thinking", tier: "idle" };
-  if (key === "minimal" || key === "min") return { level: 1, bars: 1, label: "Minimal", short: "Min", hint: "Fastest · minimal reasoning", tier: "low" };
-  if (key === "low") return { level: 1, bars: 1, label: "Low", short: "Low", hint: "Fast & light reasoning", tier: "low" };
-  if (key === "medium" || key === "med" || key === "default" || key === "normal") return { level: 2, bars: 2, label: "Medium", short: "Med", hint: "Balanced speed and depth", tier: "mid" };
-  if (key === "high") return { level: 3, bars: 3, label: "High", short: "High", hint: "Deep multi-step reasoning", tier: "high" };
-  if (key === "xhigh" || key === "extrahigh" || key === "max" || key === "maximum") return { level: 4, bars: 4, label: "X-High", short: "Max", hint: "Maximum reasoning depth", tier: "max" };
+  if (key === "none" || key === "off") return { level: 0, bars: 0, label: "Off", short: "Off", hint: "No extended thinking", tier: "idle", colorKey: "muted" };
+  if (key === "minimal" || key === "min") return { level: 1, bars: 1, label: "Minimal", short: "Min", hint: "Fastest · minimal reasoning", tier: "low", colorKey: "done" };
+  if (key === "low") return { level: 1, bars: 1, label: "Low", short: "Low", hint: "Fast & light reasoning", tier: "low", colorKey: "done" };
+  if (key === "medium" || key === "med" || key === "default" || key === "normal") return { level: 2, bars: 2, label: "Medium", short: "Med", hint: "Balanced speed and depth", tier: "mid", colorKey: "teal" };
+  if (key === "high") return { level: 3, bars: 3, label: "High", short: "High", hint: "Deep multi-step reasoning", tier: "high", colorKey: "amber" };
+  if (key === "xhigh" || key === "extrahigh") return { level: 4, bars: 4, label: "X-High", short: "X-High", hint: "Extended reasoning depth", tier: "xhigh", colorKey: "accent" };
+  if (key === "max" || key === "maximum") return { level: 5, bars: 5, label: "Max", short: "Max", hint: "Heavy maximum compute", tier: "max", colorKey: "blocked" };
+  if (key === "ultra") return { level: 6, bars: 5, label: "Ultra", short: "Ultra", hint: "Unbounded frontier depth", tier: "ultra", colorKey: "plum" };
   const label = raw.charAt(0).toUpperCase() + raw.slice(1);
-  return { level: 2, bars: 2, label, short: label, hint: "Reasoning effort", tier: "mid" };
+  return { level: 2, bars: 2, label, short: label, hint: "Reasoning effort", tier: "mid", colorKey: "accent" };
 }
 
 /** E02: model/effort identifiers accepted into the switch command. */

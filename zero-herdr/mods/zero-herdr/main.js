@@ -449,8 +449,8 @@ export default class ZeroHerdr extends View {
       mod: "zero-picker",
       kind: "popup",
       at: "pointer",
-      width: kind === "effort" ? 260 : 250,
-      height: kind === "effort" ? 250 : Math.min(360, 60 + options.length * 30),
+      width: kind === "effort" ? 296 : 250,
+      height: kind === "effort" ? 284 : Math.min(360, 60 + options.length * 30),
       props: { kind, address, options },
     });
     setShared(PICKER_KEY, { overlay: this.pickerOverlay, kind, address });
@@ -607,30 +607,48 @@ export default class ZeroHerdr extends View {
         .on_click((_e, cx) => this.togglePicker('model', lead.address, cx)))
       .child(txt(value, 11.5).font_weight(500).min_w(0).flex_1().truncate())
       .when(isCodex, el => el.child(icon('chevron-down', 10)));
-    const effortBars = (info) => h_flex().h(13).items_end().gap(1.5).flex_none()
-      .children([4, 7, 10, 13].map((height, i) => {
+    const effortTone = (colorKey) => {
+      if (colorKey === 'done') return p.done;
+      if (colorKey === 'teal') return p.ansi?.(6) ?? p.done;
+      if (colorKey === 'amber') return p.ansi?.(3) ?? p.accent;
+      if (colorKey === 'blocked') return p.blocked;
+      if (colorKey === 'plum') return p.ansi?.(5) ?? p.accent;
+      if (colorKey === 'muted') return p.muted;
+      return p.accent;
+    };
+    const effortBars = (info, tone) => h_flex().h(13).items_end().gap(1.5).flex_none()
+      .children([4, 6, 8.5, 11, 13].map((height, i) => {
         const active = i < info.bars;
-        const barColor = !active ? p.track
-          : info.tier === 'low' ? withAlpha(p.accent, '99')
-          : p.accent;
-        const animate = active && working && motionOn() && (info.tier === 'max' || (info.tier === 'high' && i === info.bars - 1));
+        const barColor = !active ? p.track : tone;
+        const animate = active && motionOn() && (
+          info.tier === 'ultra' ||
+          (working && info.level >= 4) ||
+          (working && info.tier === 'high' && i === info.bars - 1)
+        );
         return div().id('effort-bar-' + i).w(2).h(height).rounded_full().bg(barColor)
-          .when(animate, el => el.loop('opacity', { from: 0.4, to: 1, period: 1100 + i * 180 }));
+          .when(animate, el => el.loop('opacity', { from: info.tier === 'ultra' ? 0.3 : 0.42, to: 1, period: (info.tier === 'ultra' ? 820 : 1100) + i * 150 }));
       }));
     const effortChip = (info) => {
       const open = pickerOpen('effort');
-      const strong = info.tier === 'high' || info.tier === 'max';
+      const tone = effortTone(info.colorKey);
+      const intense = info.level >= 4;
+      const shimmerPeriod = info.tier === 'ultra' ? 1350 : info.tier === 'max' ? 1800 : info.tier === 'xhigh' ? 2600 : 0;
       const tip = `${info.label} reasoning · ${info.hint}` + (isCodex ? '\nClick to change effort' : '');
-      return h_flex().id('codex-effort-picker').flex_none().h(32).px(9).gap(6)
-        .items_center().rounded(8).border(.5)
-        .border_color(open ? withAlpha(p.accent, '88') : info.tier === 'max' ? withAlpha(p.accent, '66') : info.tier === 'high' ? withAlpha(p.accent, '40') : material.wellEdge)
-        .bg(open ? p.selected : info.tier === 'max' ? withAlpha(p.accent, '14') : material.well)
+      return div().id('codex-effort-picker').relative().flex_none().h(32).rounded(8).overflow_hidden().border(.5)
+        .border_color(open ? tone : info.level >= 3 ? withAlpha(tone, intense ? '70' : '48') : material.wellEdge)
+        .bg(open ? p.selected : info.level >= 3 ? withAlpha(tone, info.tier === 'ultra' ? '20' : intense ? '16' : '0e') : material.well)
         .tooltip(tip)
-        .when(isCodex, el => el.cursor_pointer().hover(s => s.bg(p.hover))
+        .when(isCodex, el => el.cursor_pointer().hover(s => s.bg(withAlpha(tone, '24')))
           .on_click((_e, cx) => this.togglePicker('effort', lead.address, cx)))
-        .child(effortBars(info))
-        .child(txt(info.short, 11, strong ? p.text : p.muted).font_weight(500))
-        .when(isCodex, el => el.child(icon('chevron-down', 10)));
+        .when(shimmerPeriod > 0 && motionOn(), el => el.child(h_flex().id('effort-chip-shimmer').absolute().top(1).bottom(1).left(-32)
+          .loop('left', { from: -32, to: 118, period: shimmerPeriod, easing: 'ease-in-out' })
+          .child(div().h_full().w(8).bg(withAlpha(tone, info.tier === 'ultra' ? '1a' : '10')))
+          .child(div().h_full().w(12).bg(withAlpha(info.tier === 'ultra' ? p.text : tone, info.tier === 'ultra' ? '30' : '22')))
+          .child(div().h_full().w(8).bg(withAlpha(tone, info.tier === 'ultra' ? '1a' : '10')))))
+        .child(h_flex().relative().h_full().px(9).gap(6).items_center()
+          .child(effortBars(info, tone))
+          .child(txt(info.short, 11, info.level >= 3 ? p.text : p.muted).font_weight(500))
+          .when(isCodex, el => el.child(icon('chevron-down', 10, info.level >= 4 ? tone : p.muted))));
     };
 
     const session = card('session-card')
