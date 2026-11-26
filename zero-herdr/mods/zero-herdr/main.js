@@ -631,24 +631,18 @@ export default class ZeroHerdr extends View {
     const effortChip = (info) => {
       const open = pickerOpen('effort');
       const tone = effortTone(info.colorKey);
-      const intense = info.level >= 4;
-      const shimmerPeriod = info.tier === 'ultra' ? 1350 : info.tier === 'max' ? 1800 : info.tier === 'xhigh' ? 2600 : 0;
+      const borderAlpha = info.level >= 5 ? '80' : info.level >= 3 ? '58' : '38';
       const tip = `${info.label} reasoning · ${info.hint}` + (isCodex ? '\nClick to change effort' : '');
-      return div().id('codex-effort-picker').relative().flex_none().h(32).rounded(8).overflow_hidden().border(.5)
-        .border_color(open ? tone : info.level >= 3 ? withAlpha(tone, intense ? '70' : '48') : material.wellEdge)
-        .bg(open ? p.selected : info.level >= 3 ? withAlpha(tone, info.tier === 'ultra' ? '20' : intense ? '16' : '0e') : material.well)
+      return h_flex().id('codex-effort-picker').flex_none().h(32).px(9).gap(6)
+        .items_center().rounded(8).border(.5)
+        .border_color(open ? tone : info.level >= 1 ? withAlpha(tone, borderAlpha) : material.wellEdge)
+        .bg(open ? p.selected : material.well)
         .tooltip(tip)
-        .when(isCodex, el => el.cursor_pointer().hover(s => s.bg(withAlpha(tone, '24')))
+        .when(isCodex, el => el.cursor_pointer().hover(s => s.bg(p.hover))
           .on_click((_e, cx) => this.togglePicker('effort', lead.address, cx)))
-        .when(shimmerPeriod > 0 && motionOn(), el => el.child(h_flex().id('effort-chip-shimmer').absolute().top(1).bottom(1).left(-32)
-          .loop('left', { from: -32, to: 118, period: shimmerPeriod, easing: 'ease-in-out' })
-          .child(div().h_full().w(8).bg(withAlpha(tone, info.tier === 'ultra' ? '1a' : '10')))
-          .child(div().h_full().w(12).bg(withAlpha(info.tier === 'ultra' ? p.text : tone, info.tier === 'ultra' ? '30' : '22')))
-          .child(div().h_full().w(8).bg(withAlpha(tone, info.tier === 'ultra' ? '1a' : '10')))))
-        .child(h_flex().relative().h_full().px(9).gap(6).items_center()
-          .child(effortBars(info, tone))
-          .child(txt(info.short, 11, info.level >= 3 ? p.text : p.muted).font_weight(500))
-          .when(isCodex, el => el.child(icon('chevron-down', 10, info.level >= 4 ? tone : p.muted))));
+        .child(effortBars(info, tone))
+        .child(txt(info.short, 11, info.level >= 3 ? p.text : p.muted).font_weight(500))
+        .when(isCodex, el => el.child(icon('chevron-down', 10, p.muted)));
     };
 
     const session = card('session-card')
