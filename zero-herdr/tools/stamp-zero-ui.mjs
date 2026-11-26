@@ -5,7 +5,7 @@
 //
 // Per consumer mod:
 //   - zero-tokens.js / zero-theme.js / zero-kit.js  (copied verbatim)
-//   - fonts/Host Grotesk + Geist Mono TTFs and their OFL licenses
+//   - fonts/Allo (Regular/Medium/SemiBold) + Geist Mono + OFL licenses
 //
 // Icons stay in mods/zero-ui/icons/ and are referenced by path
 // ("mods/zero-ui/icons/<name>.svg") — svg() reads any file under the app
@@ -21,7 +21,7 @@ import { fileURLToPath } from "node:url";
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const ui = join(root, "mods", "zero-ui");
 const FILES = ["zero-tokens.js", "zero-theme.js", "zero-kit.js", "switch-shared.js"];
-const FONTS = ["HostGrotesk-Regular.ttf", "HostGrotesk-Medium.ttf", "GeistMono-Regular.ttf", "GeistMono-Medium.ttf", "OFL-HostGrotesk.txt", "OFL.txt"];
+const FONTS = ["Allo-Regular.otf", "Allo-Medium.otf", "Allo-SemiBold.otf", "GeistMono-Regular.ttf", "GeistMono-Medium.ttf", "OFL-Allo.txt", "OFL.txt"];
 // Every mod that imports the stamped files. Keep in sync with install.sh.
 const CONSUMERS = [
   "zero-herdr",
@@ -55,8 +55,15 @@ for (const mod of CONSUMERS) {
     }
   }
   const fontsDir = join(target, "fonts");
-  if (!check) {
+  if (check) {
+    for (const font of FONTS) {
+      if (!existsSync(join(fontsDir, font))) { console.error(`missing font: mods/${mod}/fonts/${font}`); failed = true; }
+    }
+  } else {
     mkdirSync(fontsDir, { recursive: true });
+    for (const existing of readdirSync(fontsDir)) {
+      if (!FONTS.includes(existing)) rmSync(join(fontsDir, existing), { force: true });
+    }
     for (const font of FONTS) copyFileSync(join(ui, "fonts", font), join(fontsDir, font));
   }
 }

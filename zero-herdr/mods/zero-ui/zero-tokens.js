@@ -5,7 +5,7 @@
 
 /** Font family names. Both families ship in zero-ui/fonts/ (stamped next to
  *  this file as fonts/), so Zero stays intact when Paper is removed. */
-export const UI = "Host Grotesk";
+export const UI = "Allo";
 export const MONO = "Geist Mono";
 
 export const T = {

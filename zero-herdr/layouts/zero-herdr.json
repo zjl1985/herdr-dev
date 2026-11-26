@@ -16,6 +16,7 @@
     16
   ],
   "background": "chrome",
+  "ui_font": "Allo",
   "terminal_opacity": 0,
   "terminal_padding": [
     14,
