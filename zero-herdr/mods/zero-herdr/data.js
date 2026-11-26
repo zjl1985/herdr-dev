@@ -135,6 +135,31 @@ export function taskTitle(agent, tab, space) {
   return space?.name ?? "No active task";
 }
 
+/** Clean model display name and strip duplicate trailing effort suffix when effort is shown separately. */
+export function normalizeModelName(rawModel, effort = null) {
+  if (!rawModel) return null;
+  let name = String(rawModel).trim().replace(/^gpt/i, "GPT").replace(/astra/i, "Astra");
+  if (effort) {
+    name = name.replace(/\s*\((?:none|off|minimal|min|low|medium|med|high|xhigh|x-high|extra[\s_-]*high|max|maximum)\)\s*$/i, "").trim();
+  }
+  return name || null;
+}
+
+/** Semantic profile (bars 0..4, label, hint, tier) for a reasoning effort level. */
+export function effortProfile(effort) {
+  if (effort == null || effort === "") return null;
+  const raw = String(effort).trim();
+  const key = raw.toLowerCase().replace(/[\s_-]+/g, "");
+  if (key === "none" || key === "off") return { level: 0, bars: 0, label: "Off", short: "Off", hint: "No extended thinking", tier: "idle" };
+  if (key === "minimal" || key === "min") return { level: 1, bars: 1, label: "Minimal", short: "Min", hint: "Fastest · minimal reasoning", tier: "low" };
+  if (key === "low") return { level: 1, bars: 1, label: "Low", short: "Low", hint: "Fast & light reasoning", tier: "low" };
+  if (key === "medium" || key === "med" || key === "default" || key === "normal") return { level: 2, bars: 2, label: "Medium", short: "Med", hint: "Balanced speed and depth", tier: "mid" };
+  if (key === "high") return { level: 3, bars: 3, label: "High", short: "High", hint: "Deep multi-step reasoning", tier: "high" };
+  if (key === "xhigh" || key === "extrahigh" || key === "max" || key === "maximum") return { level: 4, bars: 4, label: "X-High", short: "Max", hint: "Maximum reasoning depth", tier: "max" };
+  const label = raw.charAt(0).toUpperCase() + raw.slice(1);
+  return { level: 2, bars: 2, label, short: label, hint: "Reasoning effort", tier: "mid" };
+}
+
 /** E02: model/effort identifiers accepted into the switch command. */
 export function isValidModelOption(value) {
   return /^[a-zA-Z0-9._-]+$/.test(String(value ?? ""));

@@ -24,7 +24,7 @@ function panel() {
     ...data, cardMaterial, readKiroAccountUsage, hc: async () => { throw Error('No terminal'); }, View: class {}, Date, console, div: () => el, svg: () => el, h_flex: () => el, v_flex: () => el,
     spaces: () => [space], agents: () => [agent()], panes: () => [{ pane: current.address, cwd: current.cwd }], focused: () => ({ pane: current.address }),
     layout: () => ({ id: 'zero-herdr', hidden: false }), appHome: () => '/tmp', home: () => '/home',
-    invalidateSwitch: () => {}, noteCodexData: () => { confirmations++; return true; }, closeOverlay: () => {},
+    invalidateSwitch: () => {}, noteCodexData: () => { confirmations++; return true; }, switchState: () => null, closeOverlay: () => {},
     shared: () => null, setShared: () => {}, PICKER_KEY: 'picker', SWITCH_KEY: 'switch',
     palette: () => ({}), programIcon: () => null, motionOn: () => false, withAlpha: (c) => c, statusInfo: () => ({ key: 'idle', label: 'Idle' }),
     T: { type: {}, space: {}, radius: {}, hit: {}, icon: {}, duration: {} }, UI: '', MONO: '',

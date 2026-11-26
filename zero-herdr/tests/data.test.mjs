@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { folder, formatDuration, formatResetCountdown, formatResetTime, formatResetTooltip, parseGitStatus, parseKimiUsage, quotaPace, taskTitle, cleanTitle, isValidModelOption, switchLanded } from "../mods/zero-herdr/data.js";
+import { effortProfile, folder, formatDuration, formatResetCountdown, formatResetTime, formatResetTooltip, normalizeModelName, parseGitStatus, parseKimiUsage, quotaPace, taskTitle, cleanTitle, isValidModelOption, switchLanded } from "../mods/zero-herdr/data.js";
 
 test("folder shortens home paths", () => {
   assert.equal(folder(null, "/h"), "");
@@ -85,6 +85,23 @@ test("taskTitle prefers named tab, real titles, space name fallback", () => {
   assert.equal(taskTitle(null, null, { name: "repo" }), "repo");
   assert.equal(taskTitle(null, null, null), "No active task");
   assert.equal(cleanTitle("› › hello"), "hello");
+});
+
+test("normalizeModelName strips duplicate effort suffix and effortProfile maps tiers", () => {
+  assert.equal(normalizeModelName("Gemini 4 Neon (High)", "high"), "Gemini 4 Neon");
+  assert.equal(normalizeModelName("Gemini 4 Neon (Medium)", "medium"), "Gemini 4 Neon");
+  assert.equal(normalizeModelName("Gemini 4 Neon (High)", null), "Gemini 4 Neon (High)");
+  assert.equal(normalizeModelName("gpt-6-astra", "high"), "GPT-6-Astra");
+  assert.equal(normalizeModelName(null, "high"), null);
+
+  assert.equal(effortProfile("low").bars, 1);
+  assert.equal(effortProfile("medium").bars, 2);
+  assert.equal(effortProfile("high").bars, 3);
+  assert.equal(effortProfile("high").short, "High");
+  assert.equal(effortProfile("xhigh").bars, 4);
+  assert.equal(effortProfile("xhigh").short, "Max");
+  assert.equal(effortProfile("none").bars, 0);
+  assert.equal(effortProfile(null), null);
 });
 
 test("isValidModelOption guards the switch command", () => {

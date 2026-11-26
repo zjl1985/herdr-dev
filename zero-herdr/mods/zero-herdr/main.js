@@ -2,7 +2,7 @@ import { View, div, svg, image } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
 import { agents, appHome, closeOverlay, exec, focused, hc, home, layout, nextCommand, notify, openOverlay, panes, run, shared, setShared, spaces, theme } from "herdr";
 // C11: Z no longer calls setAgentOrder — the drawer owns traversal order.
-import { folder, formatDuration, formatResetCountdown, formatResetTime, formatResetTooltip, parseGitStatus, parseKimiUsage, quotaPace, taskTitle, cleanTitle } from "./data.js";
+import { effortProfile, folder, formatDuration, formatResetCountdown, formatResetTime, formatResetTooltip, normalizeModelName, parseGitStatus, parseKimiUsage, quotaPace, taskTitle, cleanTitle } from "./data.js";
 import { T, UI, MONO } from "./zero-tokens.js";
 import { palette, statusInfo } from "./zero-theme.js";
 import { motionOn, programIcon, withAlpha } from "./zero-kit.js";
@@ -501,9 +501,12 @@ export default class ZeroHerdr extends View {
     const elapsed = working && tab?.working_since ? formatDuration(Date.now() - tab.working_since) : null;
     const codex = m.codex;
     const isCodex = m.adapter === 'codex';
-    const rawModel = codex?.model?.replace(/^gpt/i, 'GPT').replace(/astra/i, 'Astra') ?? m.kiro?.model ?? m.agy?.model;
-    const model = rawModel && rawModel.toLowerCase() !== m.programName.toLowerCase() ? rawModel : null;
     const effort = codex?.effort ?? m.agy?.effort;
+    const effortInfo = effortProfile(effort);
+    const rawModel = normalizeModelName(codex?.model ?? m.kiro?.model ?? m.agy?.model, effort);
+    const model = rawModel && rawModel.toLowerCase() !== m.programName.toLowerCase() ? rawModel : null;
+    const sw = isCodex ? switchState() : null;
+    const switchNotice = sw && sw.address === lead?.address && sw.state !== 'success' ? sw : null;
     const pickerOpen = kind => {
       const picker = shared(PICKER_KEY);
       return picker?.overlay === this.pickerOverlay && picker?.kind === kind && picker?.address === lead?.address;
@@ -541,13 +544,39 @@ export default class ZeroHerdr extends View {
     const valueText = (value, size = 23, color = p.text) => h_flex().flex_none().items_baseline().gap(3)
       .child(txt(percent(value) == null ? '—' : Math.round(percent(value)), size, color).font_weight(500))
       .when(percent(value) != null, el => el.child(txt('%', 11, p.muted)));
-    const chip = (kind, value, caption) => h_flex().id('codex-' + kind + '-picker').min_w(0).flex_1().h(34).px(9).gap(6)
-      .items_center().rounded(8).border(.5).border_color(material.wellEdge)
-      .bg(pickerOpen(kind) ? p.selected : material.well)
-      .when(isCodex, el => el.cursor_pointer().hover(s => s.bg(p.hover)).tooltip(caption)
-        .on_click((_e, cx) => this.togglePicker(kind, lead.address, cx)))
-      .child(txt(value, 11.5).min_w(0).flex_1().truncate())
+    const modelChip = (value, caption) => h_flex().id('codex-model-picker').min_w(0).flex_1().h(32).px(10).gap(6)
+      .items_center().rounded(8).border(.5).border_color(pickerOpen('model') ? withAlpha(p.accent, '66') : material.wellEdge)
+      .bg(pickerOpen('model') ? p.selected : material.well)
+      .tooltip(isCodex ? caption : value)
+      .when(isCodex, el => el.cursor_pointer().hover(s => s.bg(p.hover))
+        .on_click((_e, cx) => this.togglePicker('model', lead.address, cx)))
+      .child(txt(value, 11.5).font_weight(500).min_w(0).flex_1().truncate())
       .when(isCodex, el => el.child(icon('chevron-down', 10)));
+    const effortBars = (info) => h_flex().h(13).items_end().gap(1.5).flex_none()
+      .children([4, 7, 10, 13].map((height, i) => {
+        const active = i < info.bars;
+        const barColor = !active ? p.track
+          : info.tier === 'low' ? withAlpha(p.accent, '99')
+          : p.accent;
+        const animate = active && working && motionOn() && (info.tier === 'max' || (info.tier === 'high' && i === info.bars - 1));
+        return div().id('effort-bar-' + i).w(2).h(height).rounded_full().bg(barColor)
+          .when(animate, el => el.loop('opacity', { from: 0.4, to: 1, period: 1100 + i * 180 }));
+      }));
+    const effortChip = (info) => {
+      const open = pickerOpen('effort');
+      const strong = info.tier === 'high' || info.tier === 'max';
+      const tip = `${info.label} reasoning · ${info.hint}` + (isCodex ? '\nClick to change effort' : '');
+      return h_flex().id('codex-effort-picker').flex_none().h(32).px(9).gap(6)
+        .items_center().rounded(8).border(.5)
+        .border_color(open ? withAlpha(p.accent, '88') : info.tier === 'max' ? withAlpha(p.accent, '66') : info.tier === 'high' ? withAlpha(p.accent, '40') : material.wellEdge)
+        .bg(open ? p.selected : info.tier === 'max' ? withAlpha(p.accent, '14') : material.well)
+        .tooltip(tip)
+        .when(isCodex, el => el.cursor_pointer().hover(s => s.bg(p.hover))
+          .on_click((_e, cx) => this.togglePicker('effort', lead.address, cx)))
+        .child(effortBars(info))
+        .child(txt(info.short, 11, strong ? p.text : p.muted).font_weight(500))
+        .when(isCodex, el => el.child(icon('chevron-down', 10)));
+    };
 
     const session = card('session-card')
       .child(h_flex().w_full().items_center().gap(7)
@@ -568,9 +597,13 @@ export default class ZeroHerdr extends View {
       .child(txt(m.title, 16).font_weight(500).line_height(1.3).max_h(42).overflow_hidden().tooltip(String(m.title)))
       .child(h_flex().w_full().items_center().gap(6).child(icon('folder', 12))
         .child(mono(folder(m.cwd, home()) || 'No folder', 10.5).min_w(0).flex_1().truncate().tooltip(m.cwd ?? '')))
-      .when(Boolean(model || effort), el => el.child(h_flex().w_full().gap(6)
-        .when(Boolean(model), row => row.child(chip('model', model, 'Select model')))
-        .when(Boolean(effort), row => row.child(chip('effort', effort, 'Select reasoning effort').max_w(90)))));
+      .when(Boolean(model || effortInfo), el => el.child(h_flex().w_full().gap(6)
+        .when(Boolean(model), row => row.child(modelChip(model, 'Select model')))
+        .when(Boolean(effortInfo), row => row.child(effortChip(effortInfo)))))
+      .when(Boolean(switchNotice), el => el.child(txt(
+        switchNotice.state === 'error' ? (switchNotice.message ?? 'Switch failed')
+          : switchNotice.state === 'sending' ? 'Switching…' : 'Waiting for Codex confirmation…',
+        10.5, switchNotice.state === 'error' ? p.blocked : p.muted)));
     const sessionNotice = m.sessionUnsupported ? 'Remote session · local metrics unavailable'
       : m.sessionEmpty ? 'Waiting for a matching session'
       : m.sessionLoading ? 'Reading session…'
