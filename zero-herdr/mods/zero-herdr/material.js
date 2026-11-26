@@ -20,13 +20,13 @@ export function cardMaterial(p) {
   const surface = rgba(base);
   const chrome = rgba(p.chrome ?? p.inset ?? p.bg);
   const dark = surface && luma(surface) < 128;
-  // Keep cards near the terminal surface on dark themes that already lift
-  // surface off chrome (e.g. #1c1c1e on #111111), and only add a gentle lift
-  // when surface matches chrome (e.g. claude-dark).
+  // Preserve the sculpted lift & well depth when surface sits on chrome
+  // (e.g. claude-dark), and only trim excess lift when a theme already
+  // separates surface strongly from chrome (e.g. #1c1c1e on #111111).
   const chromeGap = surface && chrome ? Math.abs(luma(surface) - luma(chrome)) : 0;
-  const lift = chromeGap >= 6 ? .01 : .026;
-  const top = dark ? mix(base, p.text, lift) : base;
-  const well = dark ? mix(top, p.inset, .45) : mix(top, p.track, .3);
+  const highContrastSurface = chromeGap >= 6;
+  const top = dark ? mix(base, p.text, highContrastSurface ? .028 : .055) : base;
+  const well = dark ? mix(top, p.inset, highContrastSurface ? .62 : .8) : mix(top, p.track, .3);
   const wellRgb = rgba(well);
   const idleRgb = rgba(p.idle);
   const idleText = wellRgb && idleRgb && Math.abs(luma(idleRgb) - luma(wellRgb)) < 85
@@ -34,9 +34,9 @@ export function cardMaterial(p) {
     : (p.idle ?? p.muted);
   return {
     top,
-    edge: mix(top, p.line, dark ? .55 : .3),
+    edge: mix(top, p.line, dark ? .65 : .3),
     well,
-    wellEdge: mix(well, p.line, dark ? .35 : .25),
+    wellEdge: mix(well, p.line, .25),
     idleText,
   };
 }

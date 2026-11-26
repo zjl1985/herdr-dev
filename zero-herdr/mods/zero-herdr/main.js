@@ -718,7 +718,7 @@ export default class ZeroHerdr extends View {
       .when(hasQuota, el => el.child(heading('Available quota')));
     const quotaRow = (id, name, value, badge, credit = null, resetAt = null) => {
       const low = value != null && value <= 20;
-      const color = low ? p.blocked : withAlpha(p.accent, 'c4');
+      const color = low ? p.blocked : p.accent;
       const reset = formatResetTime(resetAt);
       const resetParts = reset?.split(' ') ?? [];
       const resetTime = resetParts.pop() ?? '';
