@@ -4,7 +4,7 @@ import { v_flex, h_flex, Editor, EditorState } from "gpui-base";
 import { spaces, panes, focused, exec, readTextFile, watchFolder, theme, settings, window, openOverlay, layout } from "herdr";
 import { T, UI } from "./zero-tokens.js";
 import { palette } from "./zero-theme.js";
-import { closePanelSmooth, glassBg, glassOn, panelClosing, panelMotion, trackPanelReveal, withAlpha } from "./zero-kit.js";
+import { closePanelSmooth, depthTokens, glassBg, glassOn, gradientLayer, panelClosing, panelMotion, trackPanelReveal, withAlpha } from "./zero-kit.js";
 
 function findNode(node, id) {
   if (node?.id === id) return node;
@@ -188,11 +188,14 @@ export default class Files extends View {
     const panel = findNode(rootTree, "panel");
     const body = findNode(rootTree, "panel-body");
     const glass = glassOn();
+    const d = depthTokens(t, { glass });
     const visibleNow = Boolean(!panel || (!panel.hidden && (!body || body.active === "files")));
     const settled = trackPanelReveal(this, "panel", visibleNow, cx, "files");
     const closing = panelClosing("panel");
-    return panelMotion(v_flex().id("files").size_full().min_h(0).rounded(10).overflow_hidden().bg(glass ? glassBg(t.surface, "64", true) : t.background).border_1().border_color(glass ? withAlpha(t.foreground, "26") : t.border).text_color(t.foreground).font_family(UI).text_size(12)
-      .child(h_flex().h(42).flex_none().px(14).gap(8).items_center().bg(glass ? glassBg(t.foreground, "0a", true) : t.surface).when(glass, el => el.border_b(0.5).border_color(withAlpha(t.foreground, "14")))
+    const headerSheen = gradientLayer(d.paneHeaderTop, d.paneHeaderBottom);
+    return panelMotion(v_flex().id("files").size_full().min_h(0).rounded(12).overflow_hidden().bg(glass ? glassBg(t.surface, "64", true) : t.background).border(0.5).border_color(d.cardBorder).when(!glass, el => el.shadow_lg()).text_color(t.foreground).font_family(UI).text_size(12)
+      .child(h_flex().relative().overflow_hidden().h(40).flex_none().px(14).gap(8).items_center().bg(glass ? glassBg(t.foreground, "08", true) : t.background).border_b(0.5).border_color(glass ? withAlpha(t.foreground, "14") : withAlpha(t.border, d.dark ? "66" : "88"))
+        .when(Boolean(headerSheen), el => el.child(headerSheen))
         .when(Boolean(this.file), el => el.child(div().id("files-back").w(20).cursor_pointer().text_color(t.muted).on_click((_e, cx) => { this.show(null); cx.notify(); }).child("←")))
         .child(div().font_semibold().child("Files"))
         .child(div().flex_1().min_w(0).truncate().text_right().text_size(12).text_color(t.dim).child(this.file ?? this.root?.split(/[\\/]/).pop() ?? ""))

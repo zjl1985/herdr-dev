@@ -1,7 +1,7 @@
 // Zero UI kit — shared visual primitives for Zero mods, styled only through
 // zero-theme.js (live theme()) and zero-tokens.js. Stamped into each
 // consuming mod by tools/stamp-zero-ui.mjs.
-import { div, svg, image } from "gpui-kit";
+import { Background, PathBuilder, div, svg, image } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
 import { checking, layout, run, setShared, shared } from "herdr";
 import { T, UI, MONO } from "./zero-tokens.js";
@@ -47,6 +47,92 @@ function isDarkHex(hex) {
   const g = parseInt(m[1].slice(2, 4), 16);
   const b = parseInt(m[1].slice(4, 6), 16);
   return (r * 0.2126 + g * 0.7152 + b * 0.0722) < 128;
+}
+
+function hexLuma(hex) {
+  const m = /^#([0-9a-f]{6})/i.exec(hex ?? "");
+  if (!m) return null;
+  const r = parseInt(m[1].slice(0, 2), 16);
+  const g = parseInt(m[1].slice(2, 4), 16);
+  const b = parseInt(m[1].slice(4, 6), 16);
+  return r * 0.2126 + g * 0.7152 + b * 0.0722;
+}
+
+let _fillRectPath = null;
+function fillRectPath() {
+  if (!_fillRectPath && typeof PathBuilder?.fill === "function") {
+    _fillRectPath = PathBuilder.fill()
+      .add_polygon([["0%", "0%"], ["100%", "0%"], ["100%", "100%"], ["0%", "100%"]], true)
+      .build();
+  }
+  return _fillRectPath;
+}
+
+/** Hardware-accelerated GPUI linear gradient backdrop covering the parent's bounds. */
+export function gradientLayer(fromColor, toColor, angle = 180) {
+  const win = globalThis.window;
+  const path = fillRectPath();
+  if (!win?.paint_path || !path || typeof Background?.linear_gradient !== "function") return null;
+  return div()
+    .absolute()
+    .inset_0()
+    .child(win.paint_path(path, Background.linear_gradient(angle, fromColor, toColor)));
+}
+
+function mixHex(a, b, amount) {
+  const parse = (v) => {
+    const m = /^#([0-9a-f]{6})/i.exec(v ?? "");
+    return m ? [0, 2, 4].map((i) => parseInt(m[1].slice(i, i + 2), 16)) : null;
+  };
+  const x = parse(a), y = parse(b);
+  if (!x || !y) return a;
+  return "#" + x.map((v, i) => Math.round(v + (y[i] - v) * amount).toString(16).padStart(2, "0")).join("");
+}
+
+/** Shared Retina-grade 0.5px micro-bevel & directional-light tokens from theme(). */
+export function depthTokens(t, { glass = glassOn() } = {}) {
+  const surface = t?.surface ?? t?.background ?? "#2a2825";
+  const bg = t?.background ?? surface;
+  const chrome = t?.chrome ?? surface;
+  const dark = isDarkHex(surface);
+  const raisedLuma = hexLuma(t?.raised);
+  const chromeLuma = hexLuma(chrome);
+  const brightRaised = !dark && raisedLuma != null && chromeLuma != null && raisedLuma > chromeLuma
+    ? t.raised
+    : !dark
+      ? (t?.popover ?? t?.surface ?? "#ffffff")
+      : (t?.raised ?? t?.popover ?? t?.surface);
+  const pillBase = glass ? glassBg(dark ? (t?.foreground ?? "#ffffff") : "#ffffff", dark ? "20" : "92", true) : brightRaised;
+  const keycapBase = glass ? glassBg(dark ? surface : "#ffffff", dark ? "66" : "84", true) : (dark ? (t?.raised ?? t?.popover ?? surface) : brightRaised);
+  return {
+    dark,
+    // Main terminal pane header silky top-lit sheen dissolving into terminal background
+    paneHeaderTop: glass ? glassBg(t?.foreground ?? "#ffffff", dark ? "10" : "2c", true) : (dark ? mixHex(bg, "#ffffff", 0.05) : "#ffffff"),
+    paneHeaderBottom: glass ? glassBg(t?.foreground ?? "#ffffff", "00", true) : bg,
+    paneTopSheen: glass ? (dark ? "#ffffff24" : "#ffffffc0") : (dark ? "#ffffff1a" : "#ffffff"),
+    // Floating card: 0.5px pure white/black alpha ring (Jakub surfaces.md) + subtle gradient
+    cardBorder: glass ? (dark ? "#ffffff22" : "#00000014") : (dark ? "#ffffff16" : "#00000012"),
+    cardTop: glass ? glassBg(surface, dark ? "5a" : "78", true) : (dark ? mixHex(surface, "#ffffff", 0.04) : "#ffffff"),
+    cardBottom: glass ? glassBg(surface, dark ? "46" : "5c", true) : (dark ? mixHex(surface, "#000000", 0.06) : mixHex(surface, "#c9c1b4", 0.1)),
+    cardSheen: glass ? (dark ? "#ffffff2a" : "#ffffffcc") : (dark ? "#ffffff1e" : "#ffffff"),
+    // Active tab / sidebar / toolbar button: crisp 0.5px pure alpha edge + silky top-lit gradient
+    pillBg: pillBase,
+    pillTop: glass ? pillBase : (dark ? mixHex(brightRaised, "#ffffff", 0.06) : "#ffffff"),
+    pillBottom: glass ? pillBase : (dark ? mixHex(brightRaised, "#000000", 0.07) : mixHex(brightRaised, "#cfc7b9", 0.14)),
+    pillBorder: glass ? (dark ? "#ffffff26" : "#00000014") : (dark ? "#ffffff1c" : "#00000014"),
+    pillSheen: glass ? (dark ? "#ffffff34" : "#ffffffe0") : (dark ? "#ffffff24" : "#ffffff"),
+    // Tactile micro-keycap (+, shortcut badge, secondary controls)
+    keycapBg: keycapBase,
+    keycapTop: glass ? keycapBase : (dark ? mixHex(keycapBase, "#ffffff", 0.055) : "#ffffff"),
+    keycapBottom: glass ? keycapBase : (dark ? mixHex(keycapBase, "#000000", 0.07) : mixHex(keycapBase, "#cfc7b9", 0.14)),
+    keycapBorder: glass ? (dark ? "#ffffff22" : "#00000014") : (dark ? "#ffffff18" : "#00000014"),
+    keycapSheen: glass ? (dark ? "#ffffff2c" : "#ffffffd4") : (dark ? "#ffffff20" : "#ffffff"),
+    // Concave carved recessed well: 0.5px subtle rim + subtle concave vertical gradient
+    wellBorder: glass ? (dark ? "#00000040" : "#00000014") : (dark ? "#00000058" : "#00000014"),
+    wellTop: glass ? (dark ? "#00000038" : "#00000010") : (dark ? "#131210" : "#e5dfd4"),
+    wellBottom: glass ? (dark ? "#00000018" : "#00000004") : (dark ? "#1a1917" : "#f1ece3"),
+    wellLip: glass ? (dark ? "#ffffff14" : "#ffffff88") : (dark ? "#ffffff0e" : "#ffffffcc"),
+  };
 }
 
 /** Toggle frosted-glass mode across the live layout tree and shared mod state. */
@@ -106,7 +192,7 @@ export function setGlassMode(enabled, themeColors) {
       main.content.pane.background = "background";
       if (main.content.pane.border) main.content.pane.border.color = "border";
       if (main.content.pane.focus) main.content.pane.focus.color = "input";
-      main.content.pane.shadow = "sm";
+      main.content.pane.shadow = "lg";
     }
   }
   run("layout.set", { layout: next });
@@ -230,7 +316,7 @@ export function panelMotion(el, { settled = true, closing = false, distance = 56
     .opacity(shown ? 1 : 0)
     .spring("left", closing ? { response: 250, damping: 0.92 } : { response: 360, damping: 0.72 })
     .transition("opacity", { duration: closing ? 190 : 220, easing: closing ? "ease-in" : "ease-out" });
-  return div().size_full().min_h(0).overflow_hidden().child(animated);
+  return div().size_full().min_h(0).when(!shown, (d) => d.overflow_hidden()).child(animated);
 }
 
 /** H04: local reduced-motion switch (no system-preference API exists in the

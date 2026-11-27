@@ -1,7 +1,7 @@
 import { View, div, svg, image } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
 import { T, UI, MONO as ZERO_MONO } from "./zero-tokens.js";
-import { glassBg, glassOn } from "./zero-kit.js";
+import { depthTokens, glassBg, glassOn, gradientLayer } from "./zero-kit.js";
 import {
   spaces,
   agents,
@@ -172,7 +172,7 @@ function row(
   edgeEl,
   bodyEl,
   t,
-  { interactive = true, selected = false, expanded = false, rail = false } = {}
+  { interactive = true, selected = false, expanded = false, rail = false, depth = null, glass = false } = {}
 ) {
   const edgeSlot = div()
     .w(EDGE - 8)
@@ -206,23 +206,35 @@ function row(
     .pr(10)
     .child(bodyEl);
 
+  const lifted = selected && expanded;
+  const pillFill = lifted && depth ? gradientLayer(depth.pillTop, depth.pillBottom) : null;
   let r = h_flex()
     .id(id)
+    .relative()
+    .overflow_hidden()
     .h(height)
     .flex_none()
     .items_center()
     .rounded(8)
     .when(onRight, (s) => s.ml(6).mr(4))
     .when(!onRight, (s) => s.ml(4).mr(6))
-    .when(selected && expanded, (s) => s.bg(t.selected));
+    .when(lifted, (s) =>
+      s
+        .bg(depth?.pillBg ?? t.selected)
+        .border(0.5)
+        .border_color(depth?.pillBorder ?? t.border)
+        .when(!glass, (el) => el.shadow_sm())
+        .when(Boolean(pillFill), (el) => el.child(pillFill))
+    );
 
   if (interactive) {
-    r = r.cursor_pointer().hover((s) => s.bg(selected && expanded ? t.selected : t.hover));
+    r = r.cursor_pointer().hover((s) => s.bg(lifted ? (depth?.pillBg ?? t.selected) : t.hover));
   }
   return onRight ? r.child(bodySlot).child(edgeSlot) : r.child(edgeSlot).child(bodySlot);
 }
 
-function tile(content, { active = false } = {}, t) {
+function tile(content, { active = false, depth = null, glass = false } = {}, t) {
+  const fill = active && depth ? gradientLayer(depth.pillTop, depth.pillBottom) : null;
   return div()
     .relative()
     .size(TILE)
@@ -230,7 +242,14 @@ function tile(content, { active = false } = {}, t) {
     .flex()
     .items_center()
     .justify_center()
-    .when(active, (d) => d.bg(t.selected))
+    .when(active, (d) =>
+      d
+        .bg(depth?.pillBg ?? t.selected)
+        .border(0.5)
+        .border_color(depth?.pillBorder ?? t.border)
+        .when(!glass, (el) => el.shadow_sm())
+        .when(Boolean(fill), (el) => el.child(div().absolute().inset_0().rounded(6.5).overflow_hidden().child(fill)))
+    )
     .child(content);
 }
 
@@ -479,6 +498,7 @@ export default class ClaudeDrawer extends View {
 
     const t = theme();
     const glass = glassOn();
+    const depth = depthTokens(t, { glass });
     const place = placement();
     const onRight = place?.edge === "right";
     const spaceList = spaces();
@@ -550,13 +570,14 @@ export default class ClaudeDrawer extends View {
     const brandEdge = div()
       .size(TILE)
       .rounded(7)
-      .bg(withAlpha(t.accent, "14"))
-      .border_1()
-      .border_color(withAlpha(t.accent, "32"))
+      .bg(withAlpha(t.accent, "16"))
+      .border(0.5)
+      .border_color(withAlpha(t.accent, "38"))
+      .when(!glass, (el) => el.shadow_xs())
       .flex()
       .items_center()
       .justify_center()
-      .child(image(CAT_LOGO).w(22).h(22).flex_none());
+      .child(image(CAT_LOGO).w(20).h(20).flex_none());
 
     const brandBody = h_flex()
       .w_full()
@@ -609,16 +630,21 @@ export default class ClaudeDrawer extends View {
       );
     root.child(row("drawer-header", onRight, 34, brandEdge, brandBody, t, { interactive: false }));
 
-    // 新建空间：克制温润的微描边按键，不再用高饱和全填充色块抢夺注意力
+    // 新建空间：精致 0.5px 微立体方圆键帽
+    const newFill = gradientLayer(depth.keycapTop, depth.keycapBottom);
     const newEdge = div()
+      .relative()
+      .overflow_hidden()
       .size(TILE)
       .rounded(7)
-      .bg(t.surface)
-      .border_1()
-      .border_color(t.border)
+      .bg(depth.keycapBg)
+      .border(0.5)
+      .border_color(depth.keycapBorder)
+      .when(!glass, (el) => el.shadow_xs())
       .flex()
       .items_center()
       .justify_center()
+      .when(Boolean(newFill), (el) => el.child(newFill))
       .child(svg("mods/workspace-chrome/plus.svg").size(13).text_color(t.muted));
     const newBody = h_flex()
       .w_full()
@@ -661,8 +687,8 @@ export default class ClaudeDrawer extends View {
             .size(13)
             .text_color(w.active ? t.foreground : t.muted);
 
-      const rowHalo = w.active && expanded ? t.selected : haloBg;
-      const edge = tile(letterEl, { active: w.active && !expanded }, t);
+      const rowHalo = w.active && expanded ? depth.pillBg : haloBg;
+      const edge = tile(letterEl, { active: w.active && !expanded, depth, glass }, t);
       if (agg) {
         edge.child(statusBadge(`dot-space-${w.id}`, agg, t, rowHalo, "top"));
       }
@@ -730,6 +756,8 @@ export default class ClaudeDrawer extends View {
         selected: w.active,
         expanded,
         rail: w.active,
+        depth,
+        glass,
       })
         .tooltip(tipParts.join(" · "))
         .on_click(() => run("space.select", { id: w.id }))
@@ -811,10 +839,10 @@ export default class ClaudeDrawer extends View {
         const hasDuplicateProg = (siblingCounts.get(siblingKey) ?? 0) > 1;
         const pic = agentProgramIcon(a.program, 15, isFocused ? t.foreground : t.muted);
 
-        const rowHalo = isFocused && expanded ? t.selected : haloBg;
+        const rowHalo = isFocused && expanded ? depth.pillBg : haloBg;
         const edge = tile(
           pic ?? div().size(6).rounded_full().bg(sc),
-          { active: isFocused && !expanded },
+          { active: isFocused && !expanded, depth, glass },
           t
         ).when(!isFocused && a.status === "idle", (d) => d.opacity(0.85));
 
@@ -903,6 +931,8 @@ export default class ClaudeDrawer extends View {
           selected: isFocused,
           expanded,
           rail: isFocused,
+          depth,
+          glass,
         })
           .tooltip(tipLabel)
           .on_click(() => run("pane.focus", { pane: a.pane }))

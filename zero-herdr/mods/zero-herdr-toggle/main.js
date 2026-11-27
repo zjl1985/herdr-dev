@@ -1,7 +1,7 @@
 import { View, div, svg } from "gpui-kit";
 import { v_flex } from "gpui-base";
 import { agents, layout, theme } from "herdr";
-import { glassBg, glassOn, openPanelSmooth, withAlpha } from "./zero-kit.js";
+import { depthTokens, glassOn, openPanelSmooth } from "./zero-kit.js";
 
 function findNode(node, id) {
   if (node?.id === id) return node;
@@ -19,6 +19,7 @@ export default class ZeroHerdrToggle extends View {
 
     const t = theme();
     const glass = glassOn();
+    const d = depthTokens(t, { glass });
     const agentList = agents();
     const status = agentList.some((agent) => agent.status === "blocked")
       ? "blocked"
@@ -32,16 +33,18 @@ export default class ZeroHerdrToggle extends View {
     return v_flex()
       .id("status-toggle-open")
       .w(30)
-      .h(64)
+      .h(62)
       .items_center()
       .justify_center()
       .gap(10)
       .rounded(9)
-      .bg(glass ? glassBg(t.surface, "70", true) : t.surface)
-      .when(glass, (el) => el.border(0.5).border_color(withAlpha(t.foreground, "24")))
+      .bg(d.pillBg)
+      .border(0.5)
+      .border_color(d.pillBorder)
+      .when(!glass, (el) => el.shadow_md())
       .cursor_pointer()
       .text_color(t.dim)
-      .hover((style) => style.bg(glass ? glassBg(t.hover, "96", true) : t.hover).text_color(t.foreground))
+      .hover((style) => style.bg(t.hover).text_color(t.foreground))
       .tooltip("All spaces' agent status · open the panel")
       .on_click(() => openPanelSmooth("zero-herdr"))
       .child(

@@ -10,10 +10,10 @@
 // state would be pointer-only, so Up/Down is part of this view.
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
-import { closeOverlay, nextCommand, props, run, setShared, shared } from "herdr";
+import { closeOverlay, nextCommand, props, run, setShared, shared, theme } from "herdr";
 import { UI, MONO, T } from "./zero-tokens.js";
 import { palette } from "./zero-theme.js";
-import { hint, menuRow, motionOn, withAlpha } from "./zero-kit.js";
+import { depthTokens, hint, menuRow, motionOn, withAlpha } from "./zero-kit.js";
 import { PICK_KEY, SWITCH_KEY, PICKER_KEY } from "./switch-shared.js";
 
 function effortMeta(value) {
@@ -112,10 +112,11 @@ export default class ZeroPicker extends View {
     const currentMeta = current ? effortMeta(current.value ?? current.label) : null;
     const activeColor = currentMeta ? tierColor(p, currentMeta.colorKey) : p.accent;
     const canApply = Boolean(current) && !current.selected && !this.busy();
+    const d = depthTokens(theme());
 
     return v_flex().id("zero-picker").track_focus(this.handle)
-      .w_full().max_h(360).overflow_y_scrollbar().p(12).gap(8).bg(p.popover).border(1).border_color(p.line)
-      .font_family(UI).rounded(12).shadow_lg()
+      .w_full().max_h(360).overflow_y_scrollbar().p(12).gap(8).bg(p.popover).border(0.5).border_color(d.cardBorder)
+      .font_family(UI).rounded(12).shadow_xl()
       .on_key_down((event, cx) => {
         if (event.key === "escape") { closeOverlay(overlay); cx.stop_propagation(); }
         else if ((event.key === "down" || event.key === "right") && options.length) { move(1, cx); cx.stop_propagation(); }
@@ -130,9 +131,9 @@ export default class ZeroPicker extends View {
             .child(div().font_family(MONO).text_size(9.5).text_color(p.muted).font_weight(500).child(`${this.highlight + 1}/${options.length}`))))))
       .when(effort && Boolean(current), el => el
         // Calm preview card: neutral surface, tier-tinted border & colored mini chart
-        .child(div().id('effort-preview-' + current.value).relative().w_full().rounded(10).overflow_hidden()
+        .child(div().id('effort-preview-' + current.value).relative().w_full().rounded(8).overflow_hidden()
           .bg(p.inset)
-          .border(.5).border_color(withAlpha(activeColor, currentMeta.rank >= 4 ? '70' : '48'))
+          .border(0.5).border_color(withAlpha(activeColor, currentMeta.rank >= 4 ? '70' : '48'))
           .when(currentMeta.shimmer > 0 && motionOn(), box => box.child(h_flex().id('effort-preview-shimmer-' + current.value)
             .absolute().top(1).bottom(1).left(-56)
             .loop('left', { from: -56, to: 280, period: currentMeta.shimmer, easing: 'ease-in-out' })
@@ -153,7 +154,7 @@ export default class ZeroPicker extends View {
                 return div().flex_1().h_full().rounded_full()
                   .bg(lit ? (idx === this.highlight ? segColor : withAlpha(segColor, 'bb')) : withAlpha(p.track, '99'));
               })))))
-        // Equalizer tiles: neutral surface, colored border & colored bars only
+        // Equalizer tiles: crisp 0.5px active tile
         .child(h_flex().w_full().items_center().gap(4).pt(2)
           .children(options.map((option, i) => {
             const lit = i <= this.highlight;
@@ -164,9 +165,10 @@ export default class ZeroPicker extends View {
             const col = tierColor(p, meta.colorKey);
             const pulsePeriod = Math.max(750, 1750 - meta.rank * 170);
             return div().id('effort-step-' + option.value).relative().flex_1().min_w(0).h(42)
-              .rounded(9).overflow_hidden().flex().flex_col().items_center().justify_end().pb(8).gap(3)
-              .bg(focused ? p.selected : p.inset)
-              .border(focused ? 1 : .5).border_color(focused ? col : lit ? withAlpha(col, '38') : p.line)
+              .rounded(8).overflow_hidden().flex().flex_col().items_center().justify_end().pb(8).gap(3)
+              .bg(focused ? d.pillBg : p.inset)
+              .border(focused ? 0.5 : 0.5).border_color(focused ? col : lit ? withAlpha(col, '38') : p.line)
+              .when(focused, tile => tile.shadow_sm())
               .cursor_pointer().hover(s => s.bg(p.hover).border_color(withAlpha(col, '88')))
               .tooltip(`${meta.label} · ${meta.hint}` + (option.selected ? ' (Current)' : ''))
               .on_click((_e, cx) => { if (!this.busy()) { this.highlight = i; cx.notify(); } })
@@ -179,9 +181,10 @@ export default class ZeroPicker extends View {
         .child(h_flex().w_full().justify_between()
           .child(text(effortMeta(options[0]?.value ?? options[0]?.label).label, 10, p.dim))
           .child(text(effortMeta(options[options.length - 1]?.value ?? options[options.length - 1]?.label).label, 10, p.dim)))
-        .child(h_flex().id('effort-apply').w_full().h(34).mt(2).rounded(9).gap(6)
-          .bg(canApply ? p.selected : p.inset)
-          .border(.5).border_color(canApply ? withAlpha(activeColor, '88') : p.line)
+        .child(h_flex().id('effort-apply').w_full().h(34).mt(2).rounded(8).gap(6)
+          .bg(canApply ? d.pillBg : p.inset)
+          .border(0.5).border_color(canApply ? withAlpha(activeColor, '88') : p.line)
+          .when(canApply, btn => btn.shadow_xs())
           .items_center().justify_center().cursor_pointer()
           .hover(s => s.bg(p.hover))
           .on_click((_e, cx) => this.pick(this.highlight, cx))

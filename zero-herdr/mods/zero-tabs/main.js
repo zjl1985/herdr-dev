@@ -2,7 +2,7 @@ import { View, div, svg, image } from "gpui-kit";
 import { h_flex, ScrollHandle } from "gpui-base";
 import { spaces, panes, run, openOverlay, theme, window, shared, layout, settings } from "herdr";
 import { UI } from "./zero-tokens.js";
-import { closePanelSmooth, glassBg, glassOn, motionOn, openPanelSmooth, programIcon, withAlpha } from "./zero-kit.js";
+import { closePanelSmooth, depthTokens, glassBg, glassOn, gradientLayer, motionOn, openPanelSmooth, programIcon, withAlpha } from "./zero-kit.js";
 
 function find(node, id) {
   if (node?.id === id) return node;
@@ -79,6 +79,7 @@ export default class ZeroTabs extends View {
   render() {
     const t = theme();
     const glass = glassOn();
+    const d = depthTokens(t, { glass });
     const space = spaces().find(p => p.active);
     const shown = space?.tabs ?? [];
     const active = shown.findIndex(tab => tab.active);
@@ -91,26 +92,29 @@ export default class ZeroTabs extends View {
     const stop = (_e, cx) => cx.stop_propagation();
     const hoverBg = glass ? glassBg(t.foreground, "18", true) : t.hover;
     const idleBg = glass ? "#00000000" : t.chrome;
-    const activeTabBg = glass ? glassBg(t.foreground, "1c", true) : t.raised;
-    const activeTabBorder = glass ? withAlpha(t.foreground, "28") : t.border;
+    const activeTabBg = d.pillBg;
     // Give the strip its own frosted tint in glass mode so text/icons stay crisp
     // and free of transparent-surface antialias halos over bright white windows.
     const barBg = glass ? glassBg(t.chrome, "72", true) : t.chrome;
-    const barBorder = glass ? withAlpha(t.foreground, "18") : t.border;
     const mutedFg = glass ? withAlpha(t.foreground, "cc") : t.muted;
     const dimFg = glass ? withAlpha(t.foreground, "aa") : t.dim;
 
-    const button = (id, content, action) => div().id(id).size(26).flex_none().flex().items_center().justify_center().rounded(6).text_color(dimFg).hover(s => s.bg(hoverBg).text_color(t.foreground))
+    const button = (id, content, action) => div().id(id).size(26).flex_none().flex().items_center().justify_center().rounded(6).text_color(dimFg)
+      .hover(s => s.bg(hoverBg).text_color(t.foreground))
       .on_mouse_down("left", stop).on_click(action).child(content);
 
     const item = (c, i) => {
       const lead = panes().find(p => p.tab === c.id && p.program?.agent) ?? panes().find(p => p.tab === c.id);
       const program = lead?.program;
       const name = label(c, lead);
-      return h_flex().id(`tab-${c.id}`).h(29).px(10).gap(7).rounded(7).items_center().flex_none().text_size(12.8)
+      const pillFill = c.active ? gradientLayer(d.pillTop, d.pillBottom) : null;
+      return h_flex().id(`tab-${c.id}`).relative().overflow_hidden().h(28).px(10).gap(7).rounded(8).items_center().flex_none().text_size(12.6)
         .when(i <= active, el => el.on_size_change((_size, cx) => { this.scroll.scroll_to_item(active); cx.notify(); }))
-        .border(1).border_color(c.active ? activeTabBorder : idleBg).bg(c.active ? activeTabBg : idleBg).text_color(c.active ? t.foreground : mutedFg)
-        .hover(s => s.bg(hoverBg))
+        .border(0.5).border_color(c.active ? d.pillBorder : "#00000000")
+        .bg(c.active ? activeTabBg : idleBg).text_color(c.active ? t.foreground : mutedFg)
+        .when(c.active && !glass, el => el.shadow_sm())
+        .when(Boolean(pillFill), el => el.child(pillFill))
+        .when(!c.active, el => el.hover(s => s.bg(hoverBg).text_color(t.foreground)))
         .on_mouse_down("left", (e, cx) => { cx.stop_propagation(); this.pressed = i; if (e.click_count === 2) run("tab.rename", { id: c.id }); })
         .on_mouse_up("left", () => {
           const from = this.pressed; this.pressed = null;
@@ -135,21 +139,27 @@ export default class ZeroTabs extends View {
 
     const panelButton = (id, text, iconPath) => {
       const on = panel && !panel.hidden && body?.active === id;
-      const activeBg = glass ? glassBg(t.selected, "96", true) : t.selected;
-      return h_flex().id(`panel-${id}`).h(26).px(8).gap(5).flex_none().items_center().rounded(6)
-        .text_size(12).bg(on ? activeBg : idleBg).text_color(on ? t.foreground : mutedFg)
-        .hover(s => s.bg(hoverBg)).on_mouse_down("left", stop)
+      const btnFill = on ? gradientLayer(d.pillTop, d.pillBottom) : null;
+      return h_flex().id(`panel-${id}`).relative().overflow_hidden().h(26).px(9).gap(5).flex_none().items_center().rounded(7)
+        .text_size(12).border(0.5).border_color(on ? d.pillBorder : "#00000000")
+        .bg(on ? d.pillBg : idleBg).text_color(on ? t.foreground : mutedFg)
+        .when(on && !glass, el => el.shadow_xs())
+        .when(Boolean(btnFill), el => el.child(btnFill))
+        .when(!on, el => el.hover(s => s.bg(hoverBg).text_color(t.foreground)))
+        .on_mouse_down("left", stop)
         .on_click((_e, cx) => {
           if (on) closePanelSmooth("panel", cx);
           else openPanelSmooth("panel", id);
-        }).child(svg(iconPath).size(14)).child(text);
+        })
+        .child(svg(iconPath).size(14)).child(text);
     };
 
-    return h_flex().size_full().min_w(0).px(10).pl(lightsPadding).gap(3).items_center().font_family(UI)
-      .bg(barBg).border_b(1).border_color(barBorder)
+    return h_flex().size_full().min_w(0).px(12).pl(lightsPadding).gap(4).items_center().font_family(UI)
+      .bg(barBg)
+      .when(glass, el => el.border_b(1).border_color(withAlpha(t.foreground, "18")))
       .on_mouse_up("left", () => { this.pressed = null; })
       .on_scroll_wheel(e => this.wheel(e))
-      .child(h_flex().id("tab-scroll").flex_1().min_w(0).h_full().items_center().gap(3).overflow_x_scrollbar().track_scroll(this.scroll)
+      .child(h_flex().id("tab-scroll").flex_1().min_w(0).h_full().items_center().gap(4).overflow_x_scrollbar().track_scroll(this.scroll)
         .on_size_change((_size, cx) => { if (active >= 0) { this.scroll.scroll_to_item(active); cx.notify(); } })
         .children(shown.map(item)))
       .child(button("tab-new", "+", () => openOverlay({ mod: "new-menu", kind: "popup", width: 250, height: 512 })))

@@ -3,7 +3,7 @@ import { h_flex } from "gpui-base";
 import { spaces, agents, panes, focused, layout, home, theme, run, window as appWindow, keys } from "herdr";
 
 import { UI, MONO } from "./zero-tokens.js";
-import { closePanelSmooth, glassBg, glassOn, openPanelSmooth, setGlassMode, syncGlassLayout, withAlpha } from "./zero-kit.js";
+import { closePanelSmooth, depthTokens, glassBg, glassOn, gradientLayer, openPanelSmooth, setGlassMode, syncGlassLayout, withAlpha } from "./zero-kit.js";
 
 function findNode(node, id) {
   if (node?.id === id) return node;
@@ -76,6 +76,7 @@ export default class ZeroStatus extends View {
   render() {
     const t = theme();
     const glass = glassOn();
+    const d = depthTokens(t, { glass });
     if (glass) {
       const syncKey = `${t.chrome ?? ""}:${t.surface ?? ""}`;
       if (this._syncedGlassBg !== syncKey) {
@@ -207,12 +208,11 @@ export default class ZeroStatus extends View {
     return h_flex()
       .id("zero-status-bar")
       .size_full()
-      .px(10)
+      .px(12)
       .gap(6)
       .items_center()
       .bg(glass ? glassBg(t.chrome, "72", true) : t.chrome)
-      .border_t(1)
-      .border_color(glass ? withAlpha(t.foreground, "18") : t.border)
+      .when(glass, (el) => el.border_t(1).border_color(withAlpha(t.foreground, "18")))
       .font_family(UI)
       .text_size(11)
       .text_color(t.muted)
@@ -314,22 +314,27 @@ export default class ZeroStatus extends View {
       )
       .child(
         pill("zero-status-palette", t, "Command palette", () => run("app.palette"), glass)
-          .when(Boolean(paletteKey), (el) =>
-            el.child(
+          .when(Boolean(paletteKey), (el) => {
+            const keyFill = gradientLayer(d.keycapTop, d.keycapBottom);
+            return el.child(
               div()
-                .px(4)
-                .h(15)
+                .relative()
+                .overflow_hidden()
+                .px(5)
+                .h(16)
                 .rounded(4)
-                .bg(glass ? glassBg(t.surface, "88", true) : t.surface)
-                .border_1()
-                .border_color(glass ? withAlpha(t.border, "88") : t.border)
+                .bg(d.keycapBg)
+                .border(0.5)
+                .border_color(d.keycapBorder)
+                .when(!glass, (k) => k.shadow_xs())
                 .flex()
                 .items_center()
                 .text_size(9.5)
-                .text_color(t.dim)
+                .text_color(t.muted)
+                .when(Boolean(keyFill), (k) => k.child(keyFill))
                 .child(paletteKey)
-            )
-          )
+            );
+          })
           .child(div().text_color(t.dim).child("Commands"))
       );
   }

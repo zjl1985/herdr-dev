@@ -3,7 +3,7 @@
 import { View, div, svg, image } from "gpui-kit";
 import { h_flex } from "gpui-base";
 import { T, UI, MONO } from "./zero-tokens.js";
-import { glassBg, glassOn, motionOn, programIcon } from "./zero-kit.js";
+import { depthTokens, glassBg, glassOn, gradientLayer, motionOn, programIcon, withAlpha } from "./zero-kit.js";
 import { panes, props, run, theme, home } from "herdr";
 
 function icon(p, size, color) {
@@ -44,6 +44,7 @@ export default class ClaudePane extends View {
   render() {
     const t = theme();
     const glass = glassOn();
+    const d = depthTokens(t, { glass });
     const all = panes();
     const p = all.find((x) => x.pane === props()?.pane);
     if (!p) return div();
@@ -54,19 +55,25 @@ export default class ClaudePane extends View {
     const pic = programIcon(p.program, 14, t.dim);
     const st = p.status;
 
+    const sheen = gradientLayer(d.paneHeaderTop, d.paneHeaderBottom);
     return h_flex()
       .id(`cpane-head-${pane}`)
+      .relative()
+      .overflow_hidden()
       .size_full()
-      .pl(12)
-      .pr(6)
+      .pl(14)
+      .pr(8)
       .gap(8)
       .items_center()
-      .bg(glass ? glassBg(t.foreground, "0a", true) : t.surface)
-      .when(glass, (el) => el.border_b(0.5).border_color(glassBg(t.foreground, "16", true)))
-      .rounded_t(T.radius.outer)
+      .bg(glass ? glassBg(t.foreground, "08", true) : t.background)
+      .border_t(0.5)
+      .border_color(d.paneTopSheen)
+      .rounded_t(11.5)
       .font_family(UI)
       .text_size(12)
       .on_click(() => run("pane.focus", { pane }))
+      .when(Boolean(sheen), (el) => el.child(sheen))
+      .child(div().absolute().bottom(0).left(14).right(14).h(0.5).bg(glass ? withAlpha(t.foreground, "14") : withAlpha(t.border, d.dark ? "66" : "88")))
       .when(Boolean(pic), (el) => el.child(pic))
       .child(div().flex_none().truncate().max_w(260).font_medium().text_color(t.foreground).child(name))
       .child(div().flex_1().min_w(0).truncate().text_color(t.muted).font_family(MONO).text_size(10.5).tooltip(p.cwd ?? "").child(folder(p.cwd)))

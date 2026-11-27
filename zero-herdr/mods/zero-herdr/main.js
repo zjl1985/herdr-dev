@@ -5,7 +5,7 @@ import { agents, appHome, closeOverlay, exec, focused, hc, home, layout, nextCom
 import { effortProfile, folder, formatDuration, formatResetCountdown, formatResetTime, formatResetTooltip, normalizeModelName, parseGitStatus, parseKimiUsage, quotaPace, taskTitle, cleanTitle } from "./data.js";
 import { T, UI, MONO } from "./zero-tokens.js";
 import { palette, statusInfo } from "./zero-theme.js";
-import { closePanelSmooth, glassOn, motionOn, openPanelSmooth, panelClosing, panelMotion, programIcon, trackPanelReveal, withAlpha } from "./zero-kit.js";
+import { closePanelSmooth, glassOn, gradientLayer, motionOn, openPanelSmooth, panelClosing, panelMotion, programIcon, trackPanelReveal, withAlpha } from "./zero-kit.js";
 import { attemptSwitch, invalidateSwitch, noteCodexData, switchState } from "./switcher.js";
 import { PICK_KEY, SWITCH_KEY, PICKER_KEY } from "./switch-shared.js";
 import { cardMaterial } from "./material.js";
@@ -547,10 +547,18 @@ export default class ZeroHerdr extends View {
     const dot = (color, size = 5, pulse = false) => div().size(size).flex_none().rounded_full().bg(color)
       .when(pulse && motionOn(), el => el.loop('opacity', { from: 0.35, to: 1, period: 1600 }));
     const icon = (name, size = 14, color = p.muted) => svg('mods/zero-ui/icons/' + name + '.svg').size(size).flex_none().text_color(color);
-    const card = id => v_flex().id(id).w_full().flex_none().relative().p(14).gap(12).rounded(12)
-      .bg(material.top)
-      .border(.5).border_color(material.edge)
-      .when(!glass, el => el.shadow_md());
+    const grad = (a, b) => gradientLayer(a, b, 180);
+    // Clean Retina-grade elevated card: 0.5px pure-alpha hairline + silky gradient + soft shadow
+    const slab = (id, inner) => div().id(id + '-slab').w_full().flex_none().rounded(12)
+      .when(!glass, el => el.shadow_lg())
+      .child(inner);
+    const card = id => {
+      const fill = grad(material.faceTop, material.faceBottom);
+      return v_flex().id(id).w_full().flex_none().relative().overflow_hidden().p(14).gap(12).rounded(12)
+        .bg(material.top)
+        .border(0.5).border_color(material.outerRim)
+        .when(Boolean(fill), el => el.child(fill));
+    };
     const heading = (name, right = null) => h_flex().w_full().items_center().gap(7)
       .child(txt(name, 12).font_weight(500)).child(div().flex_1())
       .when(Boolean(right), el => el.child(right));
@@ -565,8 +573,10 @@ export default class ZeroHerdr extends View {
     const contextRuler = (value, color, nearCapacity = false) => {
       const n = percent(value) ?? 0;
       const fillW = n > 0 ? Math.max(3, Math.min(99, n)) : 0;
+      const wellFill = grad(material.wellTop, material.wellBottom);
       return div().id('context-ruler').relative().w_full().h(28).rounded(7).overflow_hidden()
-        .bg(material.well).border(.5).border_color(nearCapacity ? withAlpha(color, '66') : material.wellEdge)
+        .bg(material.well).border(0.5).border_color(nearCapacity ? withAlpha(color, '66') : material.wellTopRim)
+        .when(Boolean(wellFill), el => el.child(wellFill))
         // Subtle 80%-100% capacity zone
         .child(div().absolute().top(1).bottom(1).right(1).w('20%').rounded(6)
           .bg(withAlpha(p.blocked, nearCapacity ? '18' : '0a')))
@@ -600,14 +610,20 @@ export default class ZeroHerdr extends View {
     const valueText = (value, size = 23, color = p.text) => h_flex().flex_none().items_baseline().gap(3)
       .child(txt(percent(value) == null ? '—' : Math.round(percent(value)), size, color).font_weight(500))
       .when(percent(value) != null, el => el.child(txt('%', 11, p.muted)));
-    const modelChip = (value, caption) => h_flex().id('codex-model-picker').min_w(0).flex_1().h(32).px(10).gap(6)
-      .items_center().rounded(8).border(.5).border_color(pickerOpen('model') ? withAlpha(p.accent, '66') : material.wellEdge)
-      .bg(pickerOpen('model') ? p.selected : material.well)
-      .tooltip(isCodex ? caption : value)
-      .when(isCodex, el => el.cursor_pointer().hover(s => s.bg(p.hover))
-        .on_click((_e, cx) => this.togglePicker('model', lead.address, cx)))
-      .child(txt(value, 11.5).font_weight(500).min_w(0).flex_1().truncate())
-      .when(isCodex, el => el.child(icon('chevron-down', 10)));
+    const modelChip = (value, caption) => {
+      const capFill = !pickerOpen('model') ? grad(material.keycapTop, material.keycapBottom) : null;
+      return h_flex().id('codex-model-picker').relative().overflow_hidden().min_w(0).flex_1().h(31).px(10).gap(6)
+        .items_center().rounded(8)
+        .bg(pickerOpen('model') ? p.selected : material.keycap)
+        .border(0.5).border_color(pickerOpen('model') ? withAlpha(p.accent, '88') : material.keycapRim)
+        .when(!glass, el => el.shadow_sm())
+        .when(Boolean(capFill), el => el.child(capFill))
+        .tooltip(isCodex ? caption : value)
+        .when(isCodex, el => el.cursor_pointer().hover(s => s.bg(p.hover))
+          .on_click((_e, cx) => this.togglePicker('model', lead.address, cx)))
+        .child(txt(value, 11.5).font_weight(500).min_w(0).flex_1().truncate())
+        .when(isCodex, el => el.child(icon('chevron-down', 10)));
+    };
     const effortTone = (colorKey) => {
       if (colorKey === 'done') return p.done;
       if (colorKey === 'teal') return p.ansi?.(6) ?? p.done;
@@ -634,10 +650,13 @@ export default class ZeroHerdr extends View {
       const tone = effortTone(info.colorKey);
       const borderAlpha = info.level >= 5 ? '80' : info.level >= 3 ? '58' : '38';
       const tip = `${info.label} reasoning · ${info.hint}` + (isCodex ? '\nClick to change effort' : '');
-      return h_flex().id('codex-effort-picker').flex_none().h(32).px(9).gap(6)
-        .items_center().rounded(8).border(.5)
-        .border_color(open ? tone : info.level >= 1 ? withAlpha(tone, borderAlpha) : material.wellEdge)
-        .bg(open ? p.selected : material.well)
+      const capFill = !open ? grad(material.keycapTop, material.keycapBottom) : null;
+      return h_flex().id('codex-effort-picker').relative().overflow_hidden().flex_none().h(31).px(9).gap(6)
+        .items_center().rounded(8)
+        .border(0.5).border_color(open ? tone : info.level >= 1 ? withAlpha(tone, borderAlpha) : material.keycapRim)
+        .bg(open ? p.selected : material.keycap)
+        .when(!glass, el => el.shadow_sm())
+        .when(Boolean(capFill), el => el.child(capFill))
         .tooltip(tip)
         .when(isCodex, el => el.cursor_pointer().hover(s => s.bg(p.hover))
           .on_click((_e, cx) => this.togglePicker('effort', lead.address, cx)))
@@ -663,9 +682,10 @@ export default class ZeroHerdr extends View {
           .child(icon('motion', 14, motionEnabled ? p.muted : p.dim))
           .when(!motionEnabled, el => el.child(div().absolute().top(3).right(3).size(4.5).rounded_full().bg(p.blocked))))
         .child(action('status-close', 'panel-right', 'Hide status panel', (_e, cx) => closePanelSmooth('zero-herdr', cx))))
-      .child(h_flex().id('session-signal-banner').w_full().h(34).px(10).rounded(9).border(.5)
-        .border_color(working || lead?.status === 'blocked' ? withAlpha(stateColor, '44') : material.wellEdge)
+      .child(h_flex().id('session-signal-banner').relative().overflow_hidden().w_full().h(34).px(10).rounded(8)
+        .border(0.5).border_color(working || lead?.status === 'blocked' ? withAlpha(stateColor, '48') : material.wellTopRim)
         .bg(material.well).items_center().gap(7)
+        .when(Boolean(grad(material.wellTop, material.wellBottom)), el => el.child(grad(material.wellTop, material.wellBottom)))
         .child(txt(lead ? info.label : 'No agent', 11, bannerColor).font_weight(500))
         .when(Boolean(elapsed), el => el.child(mono(elapsed, 10)))
         .child(div().flex_1())
@@ -710,10 +730,12 @@ export default class ZeroHerdr extends View {
           .child(txt('Context', 12).font_weight(500).line_height(1).flex_1())
           .child(h_flex().flex_none().items_center().gap(5)
             .child(txt('used', 10.5, p.muted).line_height(1))
-            .child(h_flex().h(24).px(8).items_center().rounded(6)
-              .bg(contextNearCapacity ? withAlpha(contextColor, '18') : material.well)
-              .border(.5).border_color(contextNearCapacity ? withAlpha(contextColor, '66') : material.wellEdge).shadow_xs()
-              .child(txt(Math.round(contextPercent) + '%', 16, contextNearCapacity ? p.blocked : p.text).font_weight(500).line_height(1).font_family(MONO)))))
+            .child(h_flex().relative().overflow_hidden().h(24).px(8).items_center().rounded(6)
+              .bg(contextNearCapacity ? withAlpha(contextColor, '18') : material.keycap)
+              .border(0.5).border_color(contextNearCapacity ? withAlpha(contextColor, '66') : material.keycapRim)
+              .when(!glass, el => el.shadow_xs())
+              .when(!contextNearCapacity && Boolean(grad(material.keycapTop, material.keycapBottom)), el => el.child(grad(material.keycapTop, material.keycapBottom)))
+              .child(txt(Math.round(contextPercent) + '%', 15, contextNearCapacity ? p.blocked : p.text).font_weight(500).line_height(1).font_family(MONO)))))
         .child(contextRuler(contextPercent, contextColor, contextNearCapacity))
         .when(contextNearCapacity, row => row.child(txt('Near capacity', 10.5, p.blocked)))))
       .when(hasContext && hasQuota, el => el.child(div().w_full().h(.5).bg(p.line)))
@@ -736,11 +758,14 @@ export default class ZeroHerdr extends View {
       const shimmerOuter = pace.state === 'critical' ? '16' : activeState ? '10' : '08';
       const shimmerCore = pace.state === 'critical' ? '36' : activeState ? '24' : '14';
       const shimmerColor = pace.state === 'critical' ? p.text : tone;
+      const wellFill = grad(material.wellTop, material.wellBottom);
+      const badgeFill = grad(material.keycapTop, material.keycapBottom);
       const resetCapsule = reset ? div().id(id + '-reset-rail').relative().min_w(0).flex_1().h(24).rounded(7)
         .overflow_hidden().bg(material.well)
-        .border(.5).border_color(pace.state === 'critical' ? withAlpha(tone, '88') : activeState ? withAlpha(tone, '55') : material.wellEdge)
+        .border(0.5).border_color(pace.state === 'critical' ? withAlpha(tone, '88') : activeState ? withAlpha(tone, '55') : material.wellTopRim)
         .tooltip(formatResetTooltip(resetAt, TZ_LABEL, Date.now(), pace.label))
-        // Inset rounded liquid fill (matches inner radius of rounded(7) so corners never bleed out)
+        .when(Boolean(wellFill), el => el.child(wellFill))
+        // Inset rounded liquid fill (matches inner radius so corners never bleed out)
         .child(div().absolute().top(1).bottom(1).left(1).w(fillPercent + '%').min_w(8).rounded(6)
           .bg(withAlpha(tone, fillAlpha)))
         // Feathered shimmer beam gliding across the capsule
@@ -757,8 +782,10 @@ export default class ZeroHerdr extends View {
           .when(Boolean(remaining), el => el.child(mono(remaining, 10, activeState ? tone : p.dim).font_weight(activeState ? 500 : 400).line_height(1).flex_none()))) : null;
       return h_flex().id(id).w_full().items_center().gap(10)
         .when(Boolean(credit), el => el.tooltip(credit.tip))
-        .child(div().size(30).flex_none().rounded(9).bg(material.well)
-          .border(.5).border_color(pace.state === 'critical' ? withAlpha(tone, '88') : activeState ? withAlpha(tone, '55') : material.wellEdge)
+        .child(div().relative().overflow_hidden().size(28).flex_none().rounded(8).bg(material.keycap)
+          .border(0.5).border_color(pace.state === 'critical' ? withAlpha(tone, '88') : activeState ? withAlpha(tone, '55') : material.keycapRim)
+          .when(!glass, el => el.shadow_xs())
+          .when(Boolean(badgeFill), el => el.child(badgeFill))
           .flex().items_center().justify_center()
           .child(mono(badge, 10, activeState ? tone : p.muted).font_weight(activeState ? 500 : 400)))
         .child(v_flex().flex_1().min_w(0).gap(7)
@@ -841,10 +868,10 @@ export default class ZeroHerdr extends View {
         const progName = agent.program?.name ?? 'Agent';
         const sub = taskTitle(agent, tabsById.get(agent.tab), space);
         const showSub = Boolean(sub) && sub.toLowerCase() !== progName.toLowerCase() && sub.toLowerCase() !== (space?.name ?? '').toLowerCase();
-        return h_flex().id('status-agent-' + agent.address).w_full().min_h(showSub ? 38 : 30).px(8).py(4).gap(7).rounded(8).items_center()
-          .when(agent.focused, el => el.bg(p.selected))
+        return h_flex().id('status-agent-' + agent.address).relative().overflow_hidden().w_full().min_h(showSub ? 38 : 30).px(8).py(4).gap(7).rounded(8).items_center()
+          .when(agent.focused, el => el.bg(material.keycap).border(0.5).border_color(material.keycapRim).when(!glass, s => s.shadow_xs()).when(Boolean(grad(material.keycapTop, material.keycapBottom)), s => s.child(grad(material.keycapTop, material.keycapBottom))))
           .when(!agent.focused && isBlocked, el => el.bg(withAlpha(p.blocked, '14')).border(.5).border_color(withAlpha(p.blocked, '44')))
-          .cursor_pointer().hover(s => s.bg(agent.focused ? p.selected : p.hover))
+          .cursor_pointer().hover(s => s.bg(agent.focused ? material.keycap : p.hover))
           .on_click(() => run('pane.focus', { pane: agent.pane }))
           .child(div().w(2).h(showSub ? 18 : 14).flex_none().rounded_full()
             .when(agent.focused || isBlocked, el => el.bg(agent.focused ? p.accent : p.blocked)))
@@ -859,13 +886,13 @@ export default class ZeroHerdr extends View {
     const settled = trackPanelReveal(this, 'zero-herdr', this.visible(), cx);
     const closing = panelClosing('zero-herdr');
     return panelMotion(v_flex().id('zero-herdr-root').size_full().font_family(UI)
-      // The layout owns the outer spacing. Keep card edges on its grid;
-      // only reserve scroll space below the last card for its shadow.
-      .child(v_flex().id('zero-herdr-body').w_full().flex_1().min_h(0).overflow_y_scrollbar().pb(12).gap(10)
-        .child(session)
-        .when(hasContext || hasQuota || m.quotaStale, el => el.child(metrics))
-        .when(m.isKiro, el => el.child(creditCard))
-        .when(m.git.state !== 'idle' || Boolean(branch), el => el.child(workspace))
-        .when(list.length > 1, el => el.child(agentCard))), { settled, closing });
+      // Reserve generous shadow gutter inside the scroll viewport so 3D slabs
+      // cast full unclipped shadows on all sides.
+      .child(v_flex().id('zero-herdr-body').w_full().flex_1().min_h(0).overflow_y_scrollbar().px(8).pb(18).gap(14)
+        .child(slab('session', session))
+        .when(hasContext || hasQuota || m.quotaStale, el => el.child(slab('metrics', metrics)))
+        .when(m.isKiro, el => el.child(slab('kiro-credits', creditCard)))
+        .when(m.git.state !== 'idle' || Boolean(branch), el => el.child(slab('workspace', workspace)))
+        .when(list.length > 1, el => el.child(slab('agents', agentCard)))), { settled, closing });
   }
 }

@@ -70,8 +70,11 @@
         {
           "id": "work-body",
           "type": "row",
-          "padding": 10,
-          "gap": 10,
+          "padding": [
+            10,
+            14
+          ],
+          "gap": 12,
           "floating": [
             {
               "id": "claude-drawer",
@@ -104,13 +107,16 @@
             {
               "id": "main",
               "type": "block",
+              "radius": 12,
+              "shadow": "lg",
               "content": {
                 "tab": "active",
                 "pane": {
-                  "gap": 10,
+                  "gap": 12,
                   "radius": 12,
                   "background": "background",
                   "lone": true,
+                  "veil": 0.14,
                   "border": {
                     "width": 0.5,
                     "color": "border"
@@ -119,12 +125,12 @@
                     "width": 0.5,
                     "color": "input"
                   },
-                  "shadow": "sm",
+                  "shadow": "lg",
                   "header": {
                     "content": {
                       "mod": "claude-pane"
                     },
-                    "height": 30,
+                    "height": 32,
                     "position": "top",
                     "reveal": "always"
                   }
@@ -168,10 +174,10 @@
               "id": "zero-herdr",
               "type": "block",
               "size": {
-                "px": 300
+                "px": 318
               },
-              "min": 280,
-              "max": 420,
+              "min": 296,
+              "max": 436,
               "content": {
                 "mod": "zero-herdr"
               }
